@@ -24,7 +24,7 @@ const (
 )
 
 // ServiceSubjectPrefix marks a subject as a service (machine) identity rather
-// than a human user. e.g. "svc:signing-orchestrator".
+// than a human user. e.g. "svc:signflow".
 const ServiceSubjectPrefix = "svc:"
 
 // Confirmation is the RFC 7800 `cnf` claim. For DPoP-bound tokens it carries
