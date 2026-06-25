@@ -21,6 +21,7 @@ const (
 	ClaimFamilyName  = "family_name"
 	ClaimConfirm     = "cnf"
 	ClaimClientID    = "client_id"
+	ClaimAct         = "act"
 )
 
 // ServiceSubjectPrefix marks a subject as a service (machine) identity rather
@@ -32,6 +33,17 @@ const ServiceSubjectPrefix = "svc:"
 // to.
 type Confirmation struct {
 	JKT string `json:"jkt,omitempty"`
+}
+
+// Actor is the RFC 8693 `act` claim — the party currently acting on behalf of
+// the token's subject. When one delegated token is exchanged for another, the
+// new actor nests the previous one in `act`, recording the full delegation
+// chain (e.g. the orchestrator acting for the user, on behalf of the BFF).
+type Actor struct {
+	// Subject identifies the acting party (a service client id).
+	Subject string `json:"sub,omitempty"`
+	// Act is the prior actor in the delegation chain, if any.
+	Act *Actor `json:"act,omitempty"`
 }
 
 // Claims is the union of every claim the platform issues. A single struct
@@ -59,6 +71,17 @@ type Claims struct {
 
 	// Confirmation holds the DPoP key thumbprint binding.
 	Confirmation *Confirmation `json:"cnf,omitempty"`
+
+	// Act records on-behalf-of delegation: the service acting for Subject, with
+	// any prior actor nested (RFC 8693 token exchange). Present only on
+	// delegated tokens; the token still authorizes as Subject (the end user).
+	Act *Actor `json:"act,omitempty"`
+}
+
+// Delegated reports whether the token was minted via on-behalf-of delegation
+// (it carries an `act` actor) rather than issued directly to its subject.
+func (c *Claims) Delegated() bool {
+	return c.Act != nil
 }
 
 // IsService reports whether the token represents a service identity.
