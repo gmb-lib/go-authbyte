@@ -34,10 +34,32 @@ func (c *Client) DoService(ctx context.Context, audience, scope, method, fullURL
 		return nil, err
 	}
 
+	return c.doBackground(ctx, audience, token, method, fullURL, reqHeader, body)
+}
+
+// DoServiceOnBehalf is DoService acting on behalf of the end user (subjectSub):
+// it obtains a delegated token by exchanging subjectToken (RFC 8693) instead of
+// a plain service token, so the callee owner-filters on the user subject
+// exactly as for a direct user call. Used when a service composes a downstream
+// call for a logged-in user (e.g. fetching that user's document).
+func (c *Client) DoServiceOnBehalf(ctx context.Context, audience, scope, subjectSub, subjectToken, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
+	token, err := c.AcquireDelegatedToken(ctx, audience, scope, subjectSub, subjectToken)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.doBackground(ctx, audience, token, method, fullURL, reqHeader, body)
+}
+
+// doBackground issues the request with the given token through the client's own
+// net/http transport (not the framework request client), attaching a fresh DPoP
+// proof and retrying once on a resource DPoP-Nonce challenge. nonceKey scopes
+// the cached resource nonce (the target audience).
+func (c *Client) doBackground(ctx context.Context, nonceKey, token, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
 	method = strings.ToUpper(method)
 
 	for attempt := 0; attempt < 2; attempt++ {
-		proof, err := dpop.GenerateProof(c.dpopKey, method, fullURL, token, c.resourceNonce(audience))
+		proof, err := dpop.GenerateProof(c.dpopKey, method, fullURL, token, c.resourceNonce(nonceKey))
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +93,7 @@ func (c *Client) DoService(ctx context.Context, audience, scope, method, fullURL
 
 		if resp.StatusCode == http.StatusUnauthorized {
 			if n := resp.Header.Get(headerDPoPNonce); n != "" && attempt == 0 {
-				c.setResourceNonce(audience, n)
+				c.setResourceNonce(nonceKey, n)
 
 				continue
 			}
