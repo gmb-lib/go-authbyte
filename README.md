@@ -17,7 +17,11 @@ and service tokens are cached):
 2. **Outbound** — acquires this service's own DPoP-bound **service token** via
    client-credentials (cached per audience, early-refreshed) and attaches it
    plus a fresh DPoP proof to service-to-service calls, handling the
-   `DPoP-Nonce` challenge transparently.
+   `DPoP-Nonce` challenge transparently. It can also act **on behalf of the
+   logged-in user**: it exchanges that user's token for a delegated one
+   (RFC 8693 token exchange) so the callee owner-filters on the user subject
+   exactly as it would for a direct user call. Delegated tokens are cached per
+   `(audience, scope, subject)` and bound to this service's own key.
 
 ## Usage
 
@@ -47,11 +51,33 @@ err := ac.GetJSON(ctx, "svc:document", "documents:read",
     "http://document:8080/documents/"+id, &doc)
 ```
 
+### Outbound on behalf of a user (RFC 8693)
+
+When a service composes a downstream call *for the logged-in user* (e.g.
+fetching that user's document), pass the user's subject and inbound token; the
+client mints a delegated token via token exchange and the callee sees the user
+as the subject:
+
+```go
+// inboundToken is the user's raw access token (the request's Authorization
+// bearer); ctx.User().ID() is its subject.
+var doc DocumentDTO
+err := ac.GetJSONOnBehalf(ctx, "svc:document", "documents:read",
+    ctx.User().ID(), inboundToken,
+    "http://document:8080/documents/"+id, &doc)
+```
+
+`PostJSONOnBehalf` (request context) and `DoServiceOnBehalf` (background, no
+request context) are the on-behalf-of counterparts of `PostJSON` and
+`DoService`. The delegated token carries an `act` claim recording the
+delegation chain; `claims.Claims.Delegated()` reports whether a received token
+was minted on behalf of its subject.
+
 ## Packages
 
 ```
 authclient/   Configuration, Client, Azugo middleware, outbound calls
-claims/       Shared JWT claim model (user + service tokens)
+claims/       Shared JWT claim model (user + service + delegated tokens; `act`)
 dpop/         RFC 9449 proof generation & verification, JWK thumbprint
 jwks/         Caching JWKS client (TTL + unknown-kid refresh)
 nonce/        Stateless HMAC server nonce (DPoP-Nonce)
