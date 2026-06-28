@@ -13,15 +13,16 @@ import (
 
 // Standard claim names used across the platform.
 const (
-	ClaimScope       = "scope"
-	ClaimLoA         = "loa"
-	ClaimLoginMethod = "login_method"
-	ClaimName        = "name"
-	ClaimGivenName   = "given_name"
-	ClaimFamilyName  = "family_name"
-	ClaimConfirm     = "cnf"
-	ClaimClientID    = "client_id"
-	ClaimAct         = "act"
+	ClaimScope        = "scope"
+	ClaimLoA          = "loa"
+	ClaimLoginMethod  = "login_method"
+	ClaimName         = "name"
+	ClaimGivenName    = "given_name"
+	ClaimFamilyName   = "family_name"
+	ClaimSerialNumber = "serial_number"
+	ClaimConfirm      = "cnf"
+	ClaimClientID     = "client_id"
+	ClaimAct          = "act"
 )
 
 // ServiceSubjectPrefix marks a subject as a service (machine) identity rather
@@ -65,6 +66,13 @@ type Claims struct {
 	Name       string `json:"name,omitempty"`
 	GivenName  string `json:"given_name,omitempty"`
 	FamilyName string `json:"family_name,omitempty"`
+
+	// SerialNumber is the eIDAS personal/legal identity code of the user (e.g.
+	// "PNOLV-XXXXXX-XXXXX"), present on user tokens. It identifies the named party
+	// for non-repudiation — e.g. matching an invited co-signer slot to the caller.
+	// Carried through on-behalf delegation so a downstream service still sees the
+	// signing user's identity code.
+	SerialNumber string `json:"serial_number,omitempty"`
 
 	// ClientID is the requesting service client id (service tokens).
 	ClientID string `json:"client_id,omitempty"`
@@ -130,6 +138,9 @@ func (c *Claims) ToUserClaims() map[string]token.ClaimStrings {
 	}
 	if c.FamilyName != "" {
 		m[ClaimFamilyName] = token.ClaimStrings{c.FamilyName}
+	}
+	if c.SerialNumber != "" {
+		m[ClaimSerialNumber] = token.ClaimStrings{c.SerialNumber}
 	}
 	if c.ClientID != "" {
 		m[ClaimClientID] = token.ClaimStrings{c.ClientID}
