@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gmb-lib/go-authbyte/dpop"
+	"github.com/gmb-lib/go-platform-kit/propagation"
 
 	"azugo.io/azugo"
 )
@@ -286,6 +287,11 @@ func (c *Client) doWithDPoP(ctx *azugo.Context, nonceKey, token, method, fullURL
 		req.Header.SetMethod(method)
 		req.Header.Set(headerAuthorization, "DPoP "+token)
 		req.Header.Set(headerDPoP, proof)
+		// Carry the correlation id across the hop (the framework client sets
+		// traceparent automatically; the correlation id is ours to attach).
+		if cid := propagation.CorrelationID(ctx); cid != "" {
+			req.Header.Set(propagation.HeaderCorrelationID, cid)
+		}
 		if body != nil {
 			req.SetBodyRaw(body)
 			req.Header.SetContentType("application/json")
