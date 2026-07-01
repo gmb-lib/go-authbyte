@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gmb-lib/go-authbyte/dpop"
+	"github.com/gmb-lib/go-platform-kit/propagation"
 )
 
 // BackgroundResponse is the result of a background (non-request-scoped)
@@ -77,6 +78,11 @@ func (c *Client) doBackground(ctx context.Context, nonceKey, token, method, full
 			for _, v := range vs {
 				req.Header.Add(k, v)
 			}
+		}
+		// Carry the correlation id across the hop so the callee logs under the
+		// same id — it rides the caller's context. Set only when present.
+		if cid := propagation.CorrelationID(ctx); cid != "" {
+			req.Header.Set(propagation.HeaderCorrelationID, cid)
 		}
 		req.Header.Set(headerAuthorization, "DPoP "+token)
 		req.Header.Set(headerDPoP, proof)
