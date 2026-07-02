@@ -3,9 +3,9 @@ module github.com/gmb-lib/go-authbyte
 go 1.26.4
 
 require (
-	azugo.io/azugo v0.34.2
-	azugo.io/core v0.34.0
-	github.com/gmb-lib/go-platform-kit v1.2.1
+	azugo.io/azugo v0.34.3
+	azugo.io/core v0.34.1
+	github.com/gmb-lib/go-platform-kit v1.3.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/redis/go-redis/v9 v9.21.0
