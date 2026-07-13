@@ -146,7 +146,7 @@ func (c *Client) validate(ctx *azugo.Context, tokenStr string) (*authResult, err
 
 	if bound {
 		res, derr := dpop.Verify(ctx.Header.Get("DPoP"), dpop.VerifyOptions{
-			Method:       ctx.Method(),
+			Method:       string(ctx.Method()),
 			URL:          requestURL(ctx),
 			AccessToken:  tokenStr,
 			MaxAge:       c.cfg.DPoPProofMaxAge,
