@@ -273,7 +273,7 @@ func publicJWKHeader(pub *ecdsa.PublicKey) (map[string]any, error) {
 	return m, nil
 }
 
-// normalizeHTU strips query and fragment, per RFC 9449 §4.3.
+// normalizeHTU strips query and fragment, per [RFC 9449 §4.3].
 func normalizeHTU(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
