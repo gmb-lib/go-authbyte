@@ -1,4 +1,4 @@
-// Package nonce implements the server-issued DPoP-Nonce (RFC 9449 §8) as a
+// Package nonce implements the server-issued DPoP-Nonce ([RFC 9449 §8]) as a
 // stateless, HMAC-authenticated token. A nonce encodes its own issue time and
 // a MAC, so any pod can verify a nonce another pod issued without shared
 // storage — replay protection comes from the per-request `jti` cache, not the
