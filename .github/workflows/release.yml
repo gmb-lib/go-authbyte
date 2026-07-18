@@ -1,4 +1,8 @@
-name: Release and Publish
+# Publish a Go module on a GitHub release: a module "publishes" by being tagged
+# and reachable on the module proxy. This gates on the same checks as CI, then
+# warms proxy.golang.org and verifies the tagged version is importable before
+# declaring success.
+name: release
 
 on:
   release:
@@ -11,93 +15,76 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: '1.26.4'
-        cache: true
-        cache-dependency-path: go.sum
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Verify dependencies
-      run: go mod verify
-
-    - name: Check go mod tidy
-      run: go mod tidy -diff
-
-    - name: Run go vet
-      run: go vet ./...
-
-    - name: Build
-      run: go build ./...
-
-    - name: Run tests
-      run: go test -race -count=1 ./...
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+      - run: go mod download
+      - run: go mod verify
+      - run: go mod tidy -diff
+      - run: go build ./...
+      - run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893 # v9.3.0
+        with:
+          version: v2.12.2
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: Test (race)
+        run: go test -race -count=1 ./...
 
   publish:
     needs: test
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
 
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: '1.26.4'
-        cache: true
-        cache-dependency-path: go.sum
+      - name: Warm the Go module proxy
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          MODULE_PATH="github.com/${{ github.repository }}"
+          echo "Requesting proxy index for $MODULE_PATH@$TAG_NAME"
+          curl -fsSL "https://proxy.golang.org/$MODULE_PATH/@v/$TAG_NAME.info" \
+            || echo "Proxy not yet aware of the tag; it will index on first external request."
 
-    - name: Warm Go module proxy
-      run: |
-        TAG_NAME="${{ github.event.release.tag_name }}"
-        MODULE_PATH="github.com/${{ github.repository }}"
-        echo "Requesting proxy index for $MODULE_PATH@$TAG_NAME"
-        curl -fsSL "https://proxy.golang.org/$MODULE_PATH/@v/$TAG_NAME.info" \
-          || echo "Proxy not yet aware of the tag; it will be indexed on first external request."
+      - name: Verify the module is importable
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          MODULE_PATH="github.com/${{ github.repository }}"
+          WORKDIR="$(mktemp -d)"; cd "$WORKDIR"
+          go mod init verify-import >/dev/null
+          for i in 1 2 3 4 5; do
+            echo "Attempt $i/5: go get $MODULE_PATH@$TAG_NAME"
+            if GOPROXY=https://proxy.golang.org,direct go get "$MODULE_PATH@$TAG_NAME"; then
+              echo "Module is importable."; exit 0
+            fi
+            sleep $((i * 10))
+          done
+          echo "Module did not become importable in time." >&2; exit 1
 
-    - name: Verify module is importable
-      run: |
-        TAG_NAME="${{ github.event.release.tag_name }}"
-        MODULE_PATH="github.com/${{ github.repository }}"
-
-        WORKDIR="$(mktemp -d)"
-        cd "$WORKDIR"
-        go mod init verify-import >/dev/null
-
-        for i in 1 2 3 4 5; do
-          echo "Attempt $i/5: go get $MODULE_PATH@$TAG_NAME"
-          if GOPROXY=https://proxy.golang.org,direct go get "$MODULE_PATH@$TAG_NAME"; then
-            echo "Module is importable."
-            exit 0
-          fi
-          sleep $((i * 10))
-        done
-
-        echo "Module did not become importable in time." >&2
-        exit 1
-
-    - name: Publish summary
-      if: success()
-      run: |
-        TAG_NAME="${{ github.event.release.tag_name }}"
-        MODULE_PATH="github.com/${{ github.repository }}"
-        {
-          echo "## Package Publication"
-          echo ""
-          echo "- **Module:** \`$MODULE_PATH\`"
-          echo "- **Version:** \`$TAG_NAME\`"
-          echo ""
-          echo "Install with:"
-          echo ""
-          echo '```sh'
-          echo "go get $MODULE_PATH@$TAG_NAME"
-          echo '```'
-        } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish summary
+        if: success()
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          MODULE_PATH="github.com/${{ github.repository }}"
+          {
+            echo "## Package publication"
+            echo ""
+            echo "- **Module:** \`$MODULE_PATH\`"
+            echo "- **Version:** \`$TAG_NAME\`"
+            echo ""
+            echo "Install with:"
+            echo ""
+            echo '```sh'
+            echo "go get $MODULE_PATH@$TAG_NAME"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
