@@ -1,6 +1,7 @@
 package dpop
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -67,7 +68,7 @@ func TestVerifyWrongMethod(t *testing.T) {
 	opt := baseOpts()
 	opt.Method = "GET"
 
-	if _, err := Verify(proof, opt); err != ErrMethod {
+	if _, err := Verify(proof, opt); !errors.Is(err, ErrMethod) {
 		t.Fatalf("expected ErrMethod, got %v", err)
 	}
 }
@@ -78,7 +79,7 @@ func TestVerifyWrongURL(t *testing.T) {
 	opt := baseOpts()
 	opt.URL = "https://evil.example/token"
 
-	if _, err := Verify(proof, opt); err != ErrURL {
+	if _, err := Verify(proof, opt); !errors.Is(err, ErrURL) {
 		t.Fatalf("expected ErrURL, got %v", err)
 	}
 }
@@ -100,7 +101,7 @@ func TestVerifyATHMismatch(t *testing.T) {
 	opt := baseOpts()
 	opt.AccessToken = "different-token"
 
-	if _, err := Verify(proof, opt); err != ErrATH {
+	if _, err := Verify(proof, opt); !errors.Is(err, ErrATH) {
 		t.Fatalf("expected ErrATH, got %v", err)
 	}
 }
@@ -111,7 +112,7 @@ func TestVerifyMissingNonce(t *testing.T) {
 	opt := baseOpts()
 	opt.RequireNonce = true
 
-	if _, err := Verify(proof, opt); err != ErrMissingNonce {
+	if _, err := Verify(proof, opt); !errors.Is(err, ErrMissingNonce) {
 		t.Fatalf("expected ErrMissingNonce, got %v", err)
 	}
 }
@@ -122,7 +123,7 @@ func TestVerifyExpired(t *testing.T) {
 	opt := baseOpts()
 	opt.now = func() time.Time { return time.Now().Add(10 * time.Minute) }
 
-	if _, err := Verify(proof, opt); err != ErrExpired {
+	if _, err := Verify(proof, opt); !errors.Is(err, ErrExpired) {
 		t.Fatalf("expected ErrExpired, got %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package nonce
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -23,7 +24,7 @@ func TestIssueVerify(t *testing.T) {
 
 func TestVerifyEmpty(t *testing.T) {
 	i, _ := New(time.Minute)
-	if err := i.Verify("", 0); err != ErrInvalid {
+	if err := i.Verify("", 0); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("expected ErrInvalid, got %v", err)
 	}
 }
@@ -32,7 +33,7 @@ func TestVerifyTampered(t *testing.T) {
 	i, _ := New(time.Minute)
 	n := i.Issue()
 
-	if err := i.Verify(n+"x", 0); err != ErrInvalid {
+	if err := i.Verify(n+"x", 0); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("expected ErrInvalid for tampered nonce, got %v", err)
 	}
 }
@@ -45,7 +46,7 @@ func TestVerifyExpired(t *testing.T) {
 	n := i.Issue()
 
 	i.now = func() time.Time { return base.Add(2 * time.Minute) }
-	if err := i.Verify(n, 0); err != ErrInvalid {
+	if err := i.Verify(n, 0); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("expected ErrInvalid for expired nonce, got %v", err)
 	}
 }
@@ -55,7 +56,7 @@ func TestVerifyForeignKey(t *testing.T) {
 	b, _ := New(time.Minute)
 
 	n := a.Issue()
-	if err := b.Verify(n, 0); err != ErrInvalid {
+	if err := b.Verify(n, 0); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("nonce from another issuer must not verify, got %v", err)
 	}
 }
