@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gmb-lib/go-authbyte/dpop"
 	"github.com/gmb-lib/go-platform-kit/propagation"
@@ -52,11 +53,52 @@ func (c *Client) DoServiceOnBehalf(ctx context.Context, audience, scope, subject
 	return c.doBackground(ctx, audience, token, method, fullURL, reqHeader, body)
 }
 
+// DoServiceWithTimeout is DoService with a per-call overall timeout replacing
+// the client's default. Use it for operations that legitimately outlast the
+// default ceiling — for example a long-term-archival document validation,
+// where the upstream work alone can take tens of seconds. The token
+// acquisition still runs under the default (it must be fast); only the
+// resource call runs under the given timeout.
+func (c *Client) DoServiceWithTimeout(ctx context.Context, timeout time.Duration, audience, scope, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
+	token, err := c.AcquireServiceToken(ctx, audience, scope)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return c.doBackgroundWith(ctx, c.httpcNoTimeout, audience, token, method, fullURL, reqHeader, body)
+}
+
+// DoServiceOnBehalfWithTimeout is DoServiceOnBehalf with a per-call overall
+// timeout replacing the client's default — the on-behalf counterpart of
+// DoServiceWithTimeout. The token exchange still runs under the default; only
+// the resource call runs under the given timeout.
+func (c *Client) DoServiceOnBehalfWithTimeout(ctx context.Context, timeout time.Duration, audience, scope, subjectSub, subjectToken, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
+	token, err := c.AcquireDelegatedToken(ctx, audience, scope, subjectSub, subjectToken)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return c.doBackgroundWith(ctx, c.httpcNoTimeout, audience, token, method, fullURL, reqHeader, body)
+}
+
 // doBackground issues the request with the given token through the client's own
 // net/http transport (not the framework request client), attaching a fresh DPoP
 // proof and retrying once on a resource DPoP-Nonce challenge. nonceKey scopes
 // the cached resource nonce (the target audience).
 func (c *Client) doBackground(ctx context.Context, nonceKey, token, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
+	return c.doBackgroundWith(ctx, c.httpc, nonceKey, token, method, fullURL, reqHeader, body)
+}
+
+// doBackgroundWith is doBackground on an explicit http client, so a per-call
+// timeout variant can run on the timeout-free client under its own context
+// deadline while everything else keeps the default client-level ceiling.
+func (c *Client) doBackgroundWith(ctx context.Context, httpc *http.Client, nonceKey, token, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
 	method = strings.ToUpper(method)
 
 	for attempt := 0; attempt < 2; attempt++ {
@@ -90,7 +132,7 @@ func (c *Client) doBackground(ctx context.Context, nonceKey, token, method, full
 			req.Header.Set("Content-Type", "application/json")
 		}
 
-		resp, err := c.httpc.Do(req)
+		resp, err := httpc.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("auth-client: %s %s: %w", method, fullURL, err)
 		}
