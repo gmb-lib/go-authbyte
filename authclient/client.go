@@ -38,6 +38,10 @@ type Client struct {
 
 	tokenURL string
 	httpc    *http.Client
+	// httpcNoTimeout shares the transport but carries no client-level timeout;
+	// used by the *WithTimeout call variants, where the per-call context deadline
+	// is the only ceiling. Never used without a deadline.
+	httpcNoTimeout *http.Client
 
 	mu     sync.Mutex
 	tokens map[string]*cachedToken
@@ -98,9 +102,10 @@ func New(cfg *Configuration, opts ...Options) (*Client, error) {
 		// otel-instrumented transport so outbound S2S calls (service-token mint,
 		// DoService background DPoP requests, PostJSON) appear as client spans and
 		// propagate trace context to the callee. No-op when tracing is inert.
-		httpc:  &http.Client{Timeout: 15 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
-		tokens: make(map[string]*cachedToken),
-		nonces: make(map[string]string),
+		httpc:          &http.Client{Timeout: 15 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
+		httpcNoTimeout: &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
+		tokens:         make(map[string]*cachedToken),
+		nonces:         make(map[string]string),
 	}, nil
 }
 
