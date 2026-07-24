@@ -73,6 +73,13 @@ request context) are the on-behalf-of counterparts of `PostJSON` and
 delegation chain; `claims.Claims.Delegated()` reports whether a received token
 was minted on behalf of its subject.
 
+Outbound calls run under a 15s overall timeout by default. For operations that
+legitimately outlast it — e.g. a long-term-archival document validation, where
+the upstream work alone can take tens of seconds — use the per-call variants
+`DoServiceWithTimeout` / `DoServiceOnBehalfWithTimeout`: the token acquisition
+still runs under the default (it must be fast), and only the resource call runs
+under the caller's ceiling.
+
 ## Packages
 
 ```
