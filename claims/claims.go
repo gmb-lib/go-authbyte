@@ -23,6 +23,7 @@ const (
 	ClaimConfirm      = "cnf"
 	ClaimClientID     = "client_id"
 	ClaimAct          = "act"
+	ClaimTenant       = "tenant"
 )
 
 // ServiceSubjectPrefix marks a subject as a service (machine) identity rather
@@ -73,6 +74,13 @@ type Claims struct {
 	// Carried through on-behalf delegation so a downstream service still sees the
 	// signing user's identity code.
 	SerialNumber string `json:"serial_number,omitempty"`
+
+	// Tenant is the organisation the user acts under, resolved from the
+	// membership register at token issue (deployments without a register mint
+	// no tenant). Multi-tenant resource services scope every operation by it —
+	// "tenant from the token", never from request data. Carried through
+	// on-behalf delegation like the identity code.
+	Tenant string `json:"tenant,omitempty"`
 
 	// ClientID is the requesting service client id (service tokens).
 	ClientID string `json:"client_id,omitempty"`
@@ -141,6 +149,9 @@ func (c *Claims) ToUserClaims() map[string]token.ClaimStrings {
 	}
 	if c.SerialNumber != "" {
 		m[ClaimSerialNumber] = token.ClaimStrings{c.SerialNumber}
+	}
+	if c.Tenant != "" {
+		m[ClaimTenant] = token.ClaimStrings{c.Tenant}
 	}
 	if c.ClientID != "" {
 		m[ClaimClientID] = token.ClaimStrings{c.ClientID}
