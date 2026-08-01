@@ -101,7 +101,7 @@ service; everything else defaults safely.
 |---|---|---|
 | `AUTH_ISSUER_URL` | — | Trust anchor; JWKS/discovery source; expected `iss`. |
 | `AUTH_JWKS_URL` | derived | Override JWKS location. |
-| `AUTH_JWKS_CACHE_TTL` | `10m` | Public-key cache lifetime. |
+| `AUTH_JWKS_CACHE_TTL` | `10m` | Public-key cache lifetime. A token whose `kid` is not cached triggers one out-of-band fetch regardless of this TTL, so a rotated signing key is picked up without restarting the service; repeat unknown kids are rate-limited (30s) so they cannot be used to generate traffic at the issuer. |
 | `SERVICE_AUDIENCE` | — | This service's own `aud`. |
 | `SERVICE_CLIENT_ID` / `SERVICE_CLIENT_SECRET` (`_FILE`) | — | Outbound client-credentials. |
 | `SERVICE_TOKEN_EARLY_REFRESH` | `30s` | Refresh own token before exp. |
