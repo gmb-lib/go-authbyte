@@ -7,8 +7,8 @@ endpoints.
 Module: `github.com/gmb-lib/go-authbyte`. Companion to the
 `authbyte-core` authority.
 
-It does two jobs, both on the hot path with **no per-request call home** (JWKS
-and service tokens are cached):
+It does three jobs. The first two are on the hot path with **no per-request call
+home** (JWKS and service tokens are cached); the third runs only at login:
 
 1. **Inbound** — Azugo middleware that validates the access/service token
    (signature via cached JWKS, `iss`, `aud`, `exp`/`nbf`), verifies the
@@ -22,6 +22,9 @@ and service tokens are cached):
    (RFC 8693 token exchange) so the callee owner-filters on the user subject
    exactly as it would for a direct user call. Delegated tokens are cached per
    `(audience, scope, subject)` and bound to this service's own key.
+3. **Confidential browser login** (`asclient`) — for a back-end that logs a user
+   in and holds their tokens: the authorization-code flow with PKCE, over a key
+   generated per user session, so the browser never holds a token or a secret.
 
 ## Usage
 
@@ -80,9 +83,46 @@ the upstream work alone can take tens of seconds — use the per-call variants
 still runs under the default (it must be fast), and only the resource call runs
 under the caller's ceiling.
 
+### Browser login from a confidential back-end (`asclient`)
+
+The third job, for a back-end that logs a *browser user* in and holds the tokens
+on their behalf (a BFF): it drives the authorization-code flow with PKCE, and every
+server-side hop proves possession of a key that belongs to that one session, with
+the `DPoP-Nonce` challenge retried transparently. The browser never receives a
+token, a key or a secret — it holds only the calling service's own session cookie.
+
+Its calls are traced out of the box (client spans + trace context propagation), so
+a login reads as one trace across the caller and the authority. `WithHTTPClient`
+overrides the client when a caller needs its own timeout or transport — and then
+owns instrumenting it.
+
+```go
+as := asclient.New(publicURL, internalURL, clientID, redirectURI)
+
+// 1. Start: one key + one PKCE pair per session, then send the browser off.
+key, _ := asclient.GenerateKey()
+verifier, challenge, _ := asclient.PKCE()
+state, _ := asclient.RandomToken(32)
+redirect := as.AuthorizeURL(challenge, state, "") // acr_values forces a method
+
+// 2. Callback: redeem the code, proving possession of that session's key.
+tokens, err := as.ExchangeCode(ctx, key, code, verifier)
+
+// 3. Later: refresh, read the identity, or elevate the session.
+tokens, err = as.Refresh(ctx, key, tokens.RefreshToken)
+id, err := as.Identity(ctx, key, tokens.AccessToken)
+```
+
+`WebEIDChallenge` / `WebEIDLogin` drive an ID-card login (the card challenge is
+answered in the browser; the session key is proven at the token exchange), and
+`StepUp` asks the authority to elevate an existing session to a stronger method.
+`ParseUnverified` reads a token this service was just issued into the shared claim
+model — for labelling the session it already holds, never for authorizing anything.
+
 ## Packages
 
 ```
+asclient/     Confidential authorization-code browser login (PKCE + per-session proof)
 authclient/   Configuration, Client, Azugo middleware, outbound calls
 claims/       Shared JWT claim model (user + service + delegated tokens; `act`)
 dpop/         RFC 9449 proof generation & verification, JWK thumbprint

@@ -45,14 +45,17 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4   # pin to the current v4 commit SHA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage
           path: coverage.out
           if-no-files-found: ignore
 
   # Short fuzz sweep — every Fuzz* target runs 30s so an untrusted-input parser
-  # never regresses to a panic. No-op when the module has no fuzz targets.
+  # never regresses to a panic. No-op when the module has no fuzz targets. Loops
+  # per package, never a bare `./...` — `go test -fuzz` rejects a package pattern
+  # that expands to more than one package, which a multi-package module always
+  # does (bit previewbyte: "cannot use -fuzz flag with multiple packages").
   fuzz-short:
     runs-on: ubuntu-latest
     steps:
@@ -64,7 +67,9 @@ jobs:
           cache-dependency-path: go.sum
       - name: Fuzz (30s per target)
         run: |
-          targets=$(go test -list '^Fuzz' ./... 2>/dev/null | grep '^Fuzz' || true)
-          for t in $targets; do
-            go test -run '^$' -fuzz "^${t}\$" -fuzztime 30s ./...
+          for pkg in $(go list ./...); do
+            targets=$(go test -list '^Fuzz' "$pkg" 2>/dev/null | grep '^Fuzz' || true)
+            for t in $targets; do
+              go test -run '^$' -fuzz "^${t}\$" -fuzztime 30s "$pkg"
+            done
           done
