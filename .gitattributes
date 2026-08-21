@@ -11,3 +11,12 @@
 *.sh   text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
+
+# Dockerfile joins them for the same reason `*.sh` is here: a Linux tool reads it,
+# so the working copy should hold the bytes CI runs on. On Windows with
+# core.autocrlf=true, a repo without this file is checked out CRLF while git stores
+# LF — CI is unaffected, but a local gofmt, linter or docker build then sees
+# different bytes than the pipeline and reports findings that do not exist there.
+# A CRLF line continuation in a Dockerfile is the same hazard a CRLF shell script is.
+Dockerfile   text eol=lf
+Dockerfile.* text eol=lf
