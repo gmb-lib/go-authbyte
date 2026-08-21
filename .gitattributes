@@ -20,3 +20,10 @@
 # A CRLF line continuation in a Dockerfile is the same hazard a CRLF shell script is.
 Dockerfile   text eol=lf
 Dockerfile.* text eol=lf
+
+# And this file pins itself. Without the line below it is the one text file the list
+# does not cover, so core.autocrlf hands it back as CRLF on every checkout while git
+# stores LF — which makes a byte-for-byte comparison against the template flap between
+# clean and drifted depending on when the file was last written. Recorded as happening
+# twice before this line existed.
+.gitattributes text eol=lf
