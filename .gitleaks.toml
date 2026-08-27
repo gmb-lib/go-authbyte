@@ -1,0 +1,12 @@
+# gitleaks configuration — extends the default rules; nothing is allowlisted.
+#
+# Full-history scans are part of this repository's publish checks. This file makes the scan
+# reproducible, and gives a finding that has been examined and judged not to be a secret a
+# narrow, reviewable home — so the scan stays at zero instead of being re-triaged every time.
+#
+# An allowlist entry, if one is ever needed, is scoped to the commit and path it concerns and
+# carries the reason in its description. A fingerprint on its own is rejected by current
+# gitleaks versions: an entry needs `commits` and/or `paths`.
+
+[extend]
+useDefault = true

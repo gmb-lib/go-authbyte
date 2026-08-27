@@ -26,6 +26,12 @@ home** (JWKS and service tokens are cached); the third runs only at login:
    in and holds their tokens: the authorization-code flow with PKCE, over a key
    generated per user session, so the browser never holds a token or a secret.
 
+## Install
+
+```sh
+go get github.com/gmb-lib/go-authbyte
+```
+
 ## Usage
 
 ### Inbound (protect routes)
@@ -165,3 +171,15 @@ DPoP proof round-trip and tamper/expiry/ath/nonce rejection
 ([`dpop`](dpop/dpop_test.go)) and the stateless nonce
 ([`nonce`](nonce/nonce_test.go)) are covered. The end-to-end token+JWKS path is
 exercised from the `authbyte-core` issuer tests.
+
+## Contributing
+
+Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) names the gate a
+change has to pass, what a change to this library needs, and the sign-off every commit carries.
+
+Suspected vulnerabilities go through the private route in [SECURITY.md](SECURITY.md) — never a
+public issue.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
