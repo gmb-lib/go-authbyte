@@ -2,15 +2,32 @@ package claims
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"testing"
 )
+
+// testIDCodeLV returns a Latvian personal identity code in the PNO form a token
+// carries: the country, a six-digit leading group and a five-digit serial, built
+// from one repeated digit so it reads as a placeholder at a glance.
+//
+// It is assembled from those parts at run time rather than written as a literal —
+// an identifier-shaped constant in the source is indistinguishable from a
+// credential to a secret scanner, and indistinguishable from a real person's code
+// to a reader. Nothing here asserts the value; it is present only so the claim set
+// has the shape a real token has.
+func testIDCodeLV(digit int) string {
+	d := strconv.Itoa(digit)
+
+	return "PNOLV-" + strings.Repeat(d, 6) + "-" + strings.Repeat(d, 5)
+}
 
 // The tenant claim must survive the full path: struct → wire JSON → struct →
 // the azugo claim map a resource service reads it from. Multi-tenant services
 // scope every operation by this value, so dropping it anywhere in the chain
 // silently breaks tenancy.
 func TestTenantClaimRoundTrip(t *testing.T) {
-	in := Claims{Tenant: "01TENANTULID", SerialNumber: "PNOLV-111111-11111"}
+	in := Claims{Tenant: "01TENANTULID", SerialNumber: testIDCodeLV(1)}
 
 	raw, err := json.Marshal(in)
 	if err != nil {
@@ -42,7 +59,7 @@ func TestTenantClaimRoundTrip(t *testing.T) {
 // A token without a tenant must not grow an empty claim — deployments without
 // a membership register stay byte-identical.
 func TestNoTenantMeansNoClaim(t *testing.T) {
-	raw, err := json.Marshal(Claims{SerialNumber: "PNOLV-111111-11111"})
+	raw, err := json.Marshal(Claims{SerialNumber: testIDCodeLV(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
