@@ -3,20 +3,20 @@ module github.com/gmb-lib/go-authbyte
 go 1.26.6
 
 require (
-	azugo.io/azugo v0.37.2
-	azugo.io/core v0.37.2
-	github.com/gmb-lib/go-platform-kit v1.9.0
+	azugo.io/azugo v0.38.0
+	azugo.io/core v0.38.0
+	github.com/gmb-lib/go-platform-kit v1.10.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-quicktest/qt v1.102.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/spf13/viper v1.21.0
 	github.com/valyala/fasthttp v1.73.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.2 // indirect
+	github.com/andybalholm/brotli v1.2.3 // indirect
 	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.4.2 // indirect
@@ -56,9 +56,9 @@ require (
 	github.com/valyala/fastrand v1.1.0 // indirect
 	go.elastic.co/ecszap v1.0.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.45.0 // indirect
-	go.opentelemetry.io/otel/metric v1.45.0 // indirect
-	go.opentelemetry.io/otel/trace v1.45.0 // indirect
+	go.opentelemetry.io/otel v1.46.0 // indirect
+	go.opentelemetry.io/otel/metric v1.46.0 // indirect
+	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
