@@ -4,7 +4,7 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
-## Unreleased
+## v0.20.2
 
 ### Changed
 
