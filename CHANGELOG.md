@@ -4,6 +4,28 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## Unreleased
+
+### Changed
+
+- **The inbound gate now says which check it refused on — in the service's own log, never on the
+  wire.** A refused request answered `401` and logged one undifferentiated line, because the real
+  reason was discarded: the JWT error naming expiry, audience, issuer, signature or an unknown key
+  id was thrown away and replaced with a bare unauthorized, and the four separate DPoP failures
+  (proof did not verify, proof key is not the token's key, replay, and a token that is not
+  sender-constrained at all) all collapsed into one code. An expired service token and a forged one
+  produced identical evidence, which makes a service dropping its own background writes effectively
+  undiagnosable.
+
+  Each refusal now carries a reason inward and the gate logs it at `warn` alongside the underlying
+  error. **The response is unchanged** — same status, same body, same `WWW-Authenticate` — because
+  telling a caller which check it failed hands an attacker half the answer; the reason is for the
+  service that refused, not the one that was refused. Nothing to configure, and no behaviour change
+  for a request that was going to be accepted.
+
+  A `DPoP-Nonce` challenge is not affected: it is not a refusal but the protocol's own first-request
+  handshake, and it stays on its existing path.
+
 ## v0.20.1
 
 ### Changed

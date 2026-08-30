@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"azugo.io/azugo"
+	"go.uber.org/zap"
 )
 
 // Inbound header names.
@@ -58,6 +59,17 @@ func (c *Client) handle(ctx *azugo.Context) bool {
 
 	res, err := c.validate(ctx, tokenStr)
 	if err != nil {
+		// Say inwardly which check failed. The caller still gets an undifferentiated
+		// 401 — it is not told which half of a guess was right — but without this
+		// line a refused background write is indistinguishable from a forged one,
+		// and the service that refused it is the only place that knows.
+		var rf refusal
+		if errors.As(err, &rf) {
+			err = rf.public
+			ctx.Log().Warn("refused a request at the auth gate",
+				zap.String("reason", rf.reason), zap.Error(rf.cause))
+		}
+
 		ctx.Error(err)
 
 		var de dpopError
