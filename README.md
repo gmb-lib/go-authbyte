@@ -32,6 +32,9 @@ home** (JWKS and service tokens are cached); the third runs only at login:
 go get github.com/gmb-lib/go-authbyte
 ```
 
+See [`CHANGELOG.md`](./CHANGELOG.md) for what each release changed, and what it means for code that
+already uses this library, before you bump.
+
 ## Usage
 
 ### Inbound (protect routes)
