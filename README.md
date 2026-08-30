@@ -54,6 +54,13 @@ func (r *router) get(ctx *azugo.Context) {
 }
 ```
 
+**When the gate refuses**, the caller gets an undifferentiated `401` — it is never told which check
+failed, because that would let it walk a bad token toward acceptance one guess at a time. The service
+itself is told: each refusal logs `refused a request at the auth gate` at `warn` with a `reason` and
+the underlying error, so an expired service token, a wrong audience and a replayed proof are
+distinguishable in your own logs. A missing or stale DPoP nonce is not a refusal — it is answered
+`401` with a fresh `DPoP-Nonce`, which the outbound client below retries transparently.
+
 ### Outbound (service-to-service)
 
 ```go
