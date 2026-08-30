@@ -146,7 +146,7 @@ func (c *Client) validate(ctx *azugo.Context, tokenStr string) (*authResult, err
 
 	bound := cl.Thumbprint() != ""
 	if !bound && c.cfg.RequireDPoP {
-		return nil, errInvalidDPoP
+		return nil, refuse(errInvalidDPoP, "token is not sender-constrained and this service requires DPoP", nil)
 	}
 
 	if bound {
@@ -164,12 +164,12 @@ func (c *Client) validate(ctx *azugo.Context, tokenStr string) (*authResult, err
 				return c.challenge(), nil
 			}
 
-			return nil, errInvalidDPoP
+			return nil, refuse(errInvalidDPoP, "DPoP proof did not verify", derr)
 		}
 
 		// Confirm the proof key is the one the token is bound to.
 		if res.Thumbprint != cl.Thumbprint() {
-			return nil, errInvalidDPoP
+			return nil, refuse(errInvalidDPoP, "DPoP proof key is not the key the token is bound to", nil)
 		}
 
 		// Validate the server nonce; a bad/stale nonce earns a fresh challenge.
@@ -185,7 +185,10 @@ func (c *Client) validate(ctx *azugo.Context, tokenStr string) (*authResult, err
 			return nil, fmt.Errorf("auth-client: replay store: %w", rerr)
 		}
 		if !first {
-			return nil, errInvalidDPoP
+			// The one refusal a correct client can hit by accident: it reused a
+			// proof. Named on its own, because a caller losing background writes
+			// to replay is a very different problem from a bad token.
+			return nil, refuse(errInvalidDPoP, "DPoP proof jti already seen — replay", nil)
 		}
 	}
 
@@ -200,7 +203,7 @@ func (c *Client) challenge() *authResult {
 // JWKS and checks iss, aud and temporal claims.
 func (c *Client) parseToken(ctx context.Context, tokenStr string) (*claims.Claims, error) {
 	if tokenStr == "" {
-		return nil, errUnauthorized
+		return nil, refuse(errUnauthorized, "no token on the request", nil)
 	}
 
 	parser := jwt.NewParser(
@@ -219,7 +222,10 @@ func (c *Client) parseToken(ctx context.Context, tokenStr string) (*claims.Claim
 		return c.jwks.Key(ctx, kid)
 	})
 	if err != nil {
-		return nil, errUnauthorized
+		// The JWT error says which check failed — expiry, audience, issuer,
+		// signature, an unknown key id — and it was previously discarded, so an
+		// expired service token and a forged one read identically in the log.
+		return nil, refuse(errUnauthorized, "token rejected", err)
 	}
 
 	return &cl, nil
