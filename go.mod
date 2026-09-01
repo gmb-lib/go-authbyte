@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	azugo.io/azugo v0.38.0
 	azugo.io/core v0.38.0
-	github.com/gmb-lib/go-platform-kit v1.10.0
+	github.com/gmb-lib/go-platform-kit v1.11.1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-quicktest/qt v1.102.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
