@@ -4,6 +4,67 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## Unreleased
+
+### Added
+
+- **New package `identitycode` — one spelling of an identity code, for storing, comparing and
+  showing.** A signatory's identity code reaches a service written several ways: with the identity
+  type and country a certificate or an identity provider puts on it (`PNOLV-123456-78901`), with
+  the separator dropped (`PNOLV-12345678901`), as a person writes their national code
+  (`123456-78901`), as a form sends it once the separator is gone (`12345678901`), or in the
+  `LV/LV/123456-78901` shape a cross-border login carries. Compared as text those are five
+  different people, and the one who signed a document under one spelling could not find it under
+  another.
+
+  `Canonical(raw, country)` returns the single spelling to store — the identity type, the country,
+  a hyphen, and the national code with its separators removed, upper-cased — so identity can be
+  compared with plain equality:
+
+  ```go
+  stored, err := identitycode.Canonical(" pnolv-123456-78901 ", "")  // "PNOLV-12345678901"
+  stored, err = identitycode.Canonical("123456-78901", "LV")         // "PNOLV-12345678901"
+  stored, err = identitycode.Canonical("12345678901", "LV")          // "PNOLV-12345678901"
+  stored, err = identitycode.Canonical("LV/LV/123456-78901", "")     // "PNOLV-12345678901"
+
+  identitycode.Display("PNOLV-12345678901")                          // "123456-78901"
+  identitycode.Key(someValueOfUnknownProvenance)                     // the value to compare by
+  ```
+
+  `country` is a hint, and it is consulted **only** when the code names no country of its own — the
+  country chosen on the screen it was typed into, the country in the signing certificate, the
+  country recorded for the system that sent it. A country in the value always wins, and one that
+  contradicts the hint is not an error: a caller's software may or may not put the country on the
+  wire, and both have to work.
+
+  **The country is never guessed.** A bare code with no country available is refused with
+  `ErrCountryRequired` rather than filed under a default, because the same digits belong to
+  different people in different countries and a wrong identity key is the wrong person's documents.
+  The other refusals are `ErrEmpty`, `ErrCountryInvalid`, `ErrUnknownSemantics` (an identity type
+  the package does not recognise — it recognises `PNO`, `NTR`, `PAS`, `IDC` and `TIN`),
+  `ErrAmbiguous` (a code with no identity type that begins like one, which cannot be told from a
+  code that has one) and `ErrMalformed`. Every one of them is a refusal instead of a guess: none
+  carries the offending value, because an identity code is personal data and these errors reach
+  service logs.
+
+  Validation is shape only — no checksum, and no per-country length rule. A typed code is a
+  reference to a person, and what settles who signed is the certificate they sign with, so a rule
+  written for one country's format could only add ways to refuse a real foreign signatory.
+
+  Nothing else in the library changed shape to accommodate the package, it calls nothing, and it
+  needs no configuration.
+
+### Changed
+
+- **`github.com/gmb-lib/go-platform-kit` → v1.11.1.** No source change here; the release is the one
+  whose published tree no longer carries identifier-shaped test fixtures.
+
+### Notes
+
+- Repository hygiene, no effect on code that uses the library: a code of conduct was added, and the
+  advisory DCO workflow was removed now that the check is enforced by the organisation's app and a
+  branch ruleset.
+
 ## v0.20.2
 
 ### Changed
