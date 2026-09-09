@@ -232,13 +232,32 @@ func TestKey(t *testing.T) {
 func TestDisplay(t *testing.T) {
 	cases := []struct{ name, stored, want string }{
 		{"a Latvian personal code is split", lvStored(), lvSpelt()},
-		{"an Estonian one is not", "PNOEE-" + eeHead + eeTail, eeHead + eeTail},
-		{"an organisation number is not split, even in Latvia", "NTRLV-" + ntrHead + ntrTail, ntrHead + ntrTail},
-		{"a passport number is shown as it is", "PASSK-" + pasBody, pasBody},
+		{"a country with no known spelling keeps its whole code", "PNOEE-" + eeHead + eeTail, "PNOEE-" + eeHead + eeTail},
+		{"an organisation number is not split, and stays an organisation number", "NTRLV-" + ntrHead + ntrTail, "NTRLV-" + ntrHead + ntrTail},
+		{"a passport number is shown as it is stored", "PASSK-" + pasBody, "PASSK-" + pasBody},
 		{"something unparseable is shown unchanged", "not a code", "not a code"},
-		{"a code of the wrong length for its country is not forced", "PNOLV-" + lvHead, lvHead},
+		{"a code of the wrong length for its country is not forced", "PNOLV-" + lvHead, "PNOLV-" + lvHead},
 		{"an identifier that reads like a prefix keeps the code it belongs to", "PNOLV-" + prefixLike, "PNOLV-" + prefixLike},
-		{"a personal number that is not all digits is not split", "PNOLV-" + lvHead + "7890A", lvHead + "7890A"},
+		{"a personal number that is not all digits is not split", "PNOLV-" + lvHead + "7890A", "PNOLV-" + lvHead + "7890A"},
+	}
+
+	// The point of the whole function, asserted directly: five distinct principals
+	// holding the SAME digits must not render as one string. A person, a foreign
+	// namesake and an organisation used to be indistinguishable here.
+	same := []string{
+		"PNOEE-" + eeHead + eeTail,
+		"PNOLT-" + eeHead + eeTail,
+		"NTREE-" + eeHead + eeTail,
+		"PASEE-" + eeHead + eeTail,
+		"IDCEE-" + eeHead + eeTail,
+	}
+	seen := make(map[string]string, len(same))
+	for _, stored := range same {
+		shown := Display(stored)
+		if other, clash := seen[shown]; clash {
+			t.Fatalf("%q and %q are different principals but both display as %q", other, stored, shown)
+		}
+		seen[shown] = stored
 	}
 
 	for _, c := range cases {

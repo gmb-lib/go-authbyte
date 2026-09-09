@@ -207,21 +207,30 @@ func Key(stored string) string {
 }
 
 // Display returns the spelling to show a person: their own national code,
-// written the way their country writes it, without the identity type the
-// platform keys on.
+// written the way their country writes it where that is known, and otherwise
+// the code exactly as it is stored.
 //
-// A code whose identifier itself begins like an identity type is shown whole,
-// because the bare form could not be typed back in — a person must never be
-// shown something that reads as somebody else. A code Display cannot take
-// apart is returned unchanged: a display is cosmetic, and seeing the raw value
-// serves a person better than seeing nothing.
+// THE COUNTRY IS NEVER DROPPED, and neither is the identity type. Where a
+// country's own way of writing the number is known, that spelling identifies it
+// on its own — "123456-78901" reads as a personal number to a Latvian and to
+// nobody else. Everywhere else there is no such spelling to fall back on, and a
+// bare identifier would render a person, a foreign namesake holding the same
+// digits, and an organisation's register number as one identical string. Two of
+// those are different people, and a screen that renders them alike asks somebody
+// to approve a counterparty they cannot tell apart.
+//
+// Showing the stored code also keeps a property the fuzz test enforces: what a
+// person is SHOWN can be typed back in and reaches that same person. A form that
+// merely prefixed the country would not — the canonicaliser reads a space or a
+// hyphen as a separator, so the country letters would be absorbed into the
+// identifier and resolve to a different key, silently.
+//
+// A code Display cannot take apart is returned unchanged: a display is cosmetic,
+// and seeing the raw value serves a person better than seeing nothing.
 func Display(stored string) string {
 	c, err := Parse(strings.TrimSpace(stored))
 	if err != nil {
 		return stored
-	}
-	if beginsLikeAPrefix(c.Identifier) {
-		return c.String()
 	}
 	if c.Semantics == SemanticsPersonalNumber {
 		if split, ok := nationalSplits[c.Country]; ok {
@@ -231,15 +240,19 @@ func Display(stored string) string {
 		}
 	}
 
-	return c.Identifier
+	// An identifier that itself opens like an identity type needs no guard here:
+	// the fallback IS the whole code, and a national split applies only to an
+	// all-digit identifier, which cannot open with five letters.
+	return c.String()
 }
 
 // nationalSplits writes a national personal number the way its own country
 // writes it. Only a country whose separator placement is known appears here;
-// everywhere else the identifier is shown as stored, which is how the countries
-// that use no separator write it anyway. An entry here is cosmetic — nothing
-// compares a displayed value, so a wrong split is a wrong label, never a wrong
-// person.
+// everywhere else Display shows the whole stored code instead, so the country and
+// the type are present either way. An entry here is cosmetic — nothing compares a
+// displayed value, so a wrong split is a wrong label. Leaving the country out of
+// the fallback would NOT have been cosmetic, which is why the fallback is the
+// stored code and not the bare identifier.
 var nationalSplits = map[string]func(string) (string, bool){
 	// Latvia writes a personal number as six digits, a hyphen and five. The
 	// leading group was once a date of birth and since 2017 need not be, so
