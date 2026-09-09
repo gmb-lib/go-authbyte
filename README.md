@@ -155,6 +155,14 @@ stored, err = identitycode.Canonical(typedCode, chosenCountry)    // the same va
 shown := identitycode.Display(stored)                             // "123456-78901"
 ```
 
+`Display` is the spelling to put in front of a person: their own national code,
+written the way their country writes it where that spelling is known, and
+otherwise the **whole stored code**, prefix and all. It never drops the country or
+the identity type — the same digits in two countries belong to two people, and an
+organisation's register number is not a person's — so nothing it returns can
+stand for more than one principal. What it returns can also be typed back in and
+resolves to the same person.
+
 The country argument is a **hint**, consulted only when the code names no country
 of its own: the country chosen on the screen the code was typed into, the country
 in the signing certificate, the country recorded for the system that sent it. A

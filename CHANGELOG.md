@@ -4,6 +4,33 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.22.0
+
+### Fixed
+
+- **`identitycode.Display` no longer drops the country and the identity type.** It returned the bare national
+  identifier for every code except a Latvian personal number, so `PNOEE-…`, `PNOLT-…`, `NTREE-…`, `PASEE-…`
+  and `IDCEE-…` holding the same digits all rendered as one identical string — a person, a foreign namesake
+  and an organisation's register number, indistinguishable on screen. The country is part of the identity: the
+  same digits in two countries belong to two people.
+
+  Where a country's own way of writing the number is known, that spelling is unchanged — a Latvian personal
+  number still reads `123456-78901`. Everywhere else `Display` now returns the code **exactly as stored**:
+
+  ```go
+  identitycode.Display("PNOLV-01018015097")   // "010180-15097"     (unchanged)
+  identitycode.Display("PNOEE-23456789012")   // "PNOEE-23456789012"  (was "23456789012")
+  identitycode.Display("NTRLV-34567890123")   // "NTRLV-34567890123"  (was "34567890123")
+  ```
+
+  **What it means for code that already uses it:** nothing renders differently for a Latvian personal number,
+  which is the case the function was written for. Any other code now renders longer and carries its type
+  prefix — a screen with a fixed-width field for it may need a look. A prefixed spelling was chosen over
+  writing the country in front (`EE 23456789012`) deliberately: the canonicaliser reads a space or a hyphen as
+  a separator, so a person retyping what they were shown would have had the country absorbed into the
+  identifier and resolved to a **different key, with no error**. The stored spelling round-trips, and the fuzz
+  test asserts it does.
+
 ## v0.21.0
 
 ### Added
