@@ -4,6 +4,113 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.21.0
+
+### Added
+
+- **New package `identitycode` — one spelling of an identity code, for storing, comparing and
+  showing.** A signatory's identity code reaches a service written several ways: with the identity
+  type and country a certificate or an identity provider puts on it (`PNOLV-123456-78901`), with
+  the separator dropped (`PNOLV-12345678901`), as a person writes their national code
+  (`123456-78901`), as a form sends it once the separator is gone (`12345678901`), or in the
+  `LV/LV/123456-78901` shape a cross-border login carries. Compared as text those are five
+  different people, and the one who signed a document under one spelling could not find it under
+  another.
+
+  `Canonical(raw, country)` returns the single spelling to store — the identity type, the country,
+  a hyphen, and the national code with its separators removed, upper-cased — so identity can be
+  compared with plain equality:
+
+  ```go
+  stored, err := identitycode.Canonical(" pnolv-123456-78901 ", "")  // "PNOLV-12345678901"
+  stored, err = identitycode.Canonical("123456-78901", "LV")         // "PNOLV-12345678901"
+  stored, err = identitycode.Canonical("12345678901", "LV")          // "PNOLV-12345678901"
+  stored, err = identitycode.Canonical("LV/LV/123456-78901", "")     // "PNOLV-12345678901"
+
+  identitycode.Display("PNOLV-12345678901")                          // "123456-78901"
+  identitycode.Key(someValueOfUnknownProvenance)                     // the value to compare by
+  ```
+
+  `country` is a hint, and it is consulted **only** when the code names no country of its own — the
+  country chosen on the screen it was typed into, the country in the signing certificate, the
+  country recorded for the system that sent it. A country in the value always wins, and one that
+  contradicts the hint is not an error: a caller's software may or may not put the country on the
+  wire, and both have to work.
+
+  **The country is never guessed.** A bare code with no country available is refused with
+  `ErrCountryRequired` rather than filed under a default, because the same digits belong to
+  different people in different countries and a wrong identity key is the wrong person's documents.
+  The other refusals are `ErrEmpty`, `ErrCountryInvalid`, `ErrUnknownSemantics` (an identity type
+  the package does not recognise — it recognises `PNO`, `NTR`, `PAS`, `IDC` and `TIN`),
+  `ErrAmbiguous` (a code with no identity type that begins like one, which cannot be told from a
+  code that has one) and `ErrMalformed`. Every one of them is a refusal instead of a guess: none
+  carries the offending value, because an identity code is personal data and these errors reach
+  service logs.
+
+  Validation is shape only — no checksum, and no per-country length rule. A typed code is a
+  reference to a person, and what settles who signed is the certificate they sign with, so a rule
+  written for one country's format could only add ways to refuse a real foreign signatory.
+
+  Nothing else in the library changed shape to accommodate the package, it calls nothing, and it
+  needs no configuration.
+
+### Changed
+
+- **Dependencies moved up. No source change here, and none asked of you.** `azugo.io/azugo` and
+  `azugo.io/core` → **v0.38.1**, `github.com/gmb-lib/go-platform-kit` → **v1.11.2**,
+  `github.com/go-jose/go-jose/v4` → **v4.1.5**, `github.com/valyala/fasthttp` → **v1.74.0**. The
+  gate is green on the new set: build, vet, `gofmt`, `go mod tidy -diff`, and `go test -race` across
+  all seven packages with **0 races**, plus the fuzz target.
+
+  `go-platform-kit` v1.11.2 is itself a dependency move with no source change of its own; its
+  changelog covers what it carries, and the one item that reaches a running service is the next
+  entry here.
+
+- **The bump clears two `golang.org/x/crypto` advisories, and adds none.** It carries x/crypto from
+  v0.55.0 to v0.57.0, which resolves **GO-2026-6354** and **GO-2026-6355** (both fixed upstream in
+  v0.56.0). **GO-2026-5932** remains — it has no fixed version published, and it was already present
+  on v0.55.0, so nothing new arrives with this release. `govulncheck` reports **0 vulnerabilities
+  this library's code is affected by**, before and after: all three sit in required modules whose
+  vulnerable paths are not called from here. Measured both ways — the same scan was run against the
+  pre-bump tree to be sure the remaining advisory was carried forward rather than introduced.
+
+- **The metrics endpoint no longer negotiates OpenMetrics** — an azugo change, and one that shows up
+  in your monitoring rather than in your code. Up to azugo v0.38.0 a scraper sending
+  `Accept: application/openmetrics-text` was answered with
+  `Content-Type: application/openmetrics-text; version=1.0.0; charset=utf-8` and the `# EOF`
+  terminator that format requires; from **v0.38.1** the endpoint always answers
+  `Content-Type: text/plain; version=0.0.4; charset=utf-8` and writes no `# EOF`. Metric names,
+  labels and values are unchanged. This library does not serve that endpoint — azugo does, in your
+  service — but it arrives with this bump by two routes at once: this library requires azugo
+  directly, and `go-platform-kit` v1.11.2 does too, binding azugo's metrics configuration for every
+  service that uses it. **Check your scrape configuration before deploying** if it demands the OpenMetrics
+  content type or uses `# EOF` to tell a complete scrape from a truncated one. The capability had
+  been there since azugo v0.32.0.
+
+- **What go-jose v4.1.5 changes for you: almost nothing, and here is why.** This library uses
+  go-jose for exactly two things — `JSONWebKey` and `JSONWebKeySet`, so reading a JWK Set and
+  taking key thumbprints. Token and DPoP-proof signatures are verified by `golang-jwt/jwt/v5`,
+  restricted to `ES256`. Most of the release therefore lands in code this library never calls: a
+  new curve check on go-jose's *own* ECDSA verification (`ES256` now requires a P-256 key, `ES384` a
+  P-384 key, `ES512` a P-521 key), and empty-input plus CBC-HMAC key-size guards on its JWS and JWE
+  parsing.
+
+  What does touch the JWKS path is a rework of `JSONWebKey` unmarshalling: it now returns at the
+  point of failure instead of assigning and checking afterwards. **The accept/reject outcome is
+  unchanged** — the previous code already returned on that error immediately after its type switch,
+  so no malformed key was ever accepted, and none is refused now that was not refused before.
+
+  One API change is worth naming because it is a compile break rather than a behaviour one: the
+  package variable **`RandReader` is now unexported**. Code that substituted it — typically a test
+  injecting deterministic randomness — will not build against v4.1.5. Nothing in this library does,
+  and nothing in any of its known consumers does either.
+
+### Notes
+
+- Repository hygiene, no effect on code that uses the library: a code of conduct was added, and the
+  advisory DCO workflow was removed now that the check is enforced by the organisation's app and a
+  branch ruleset.
+
 ## v0.20.2
 
 ### Changed

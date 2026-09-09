@@ -26,6 +26,12 @@ home** (JWKS and service tokens are cached); the third runs only at login:
    in and holds their tokens: the authorization-code flow with PKCE, over a key
    generated per user session, so the browser never holds a token or a secret.
 
+It also carries one piece of shared vocabulary: **`identitycode`**, the single
+place a signatory's identity code is turned into the form it is stored, compared
+and shown in. Every service that holds such a code has to agree on that form
+exactly, or the same person arriving two ways becomes two people. It calls
+nothing and needs no configuration.
+
 ## Install
 
 ```sh
@@ -53,6 +59,13 @@ func (r *router) get(ctx *azugo.Context) {
     // ctx.User().ID(), .ClaimValue("login_method"), ...
 }
 ```
+
+**When the gate refuses**, the caller gets an undifferentiated `401` — it is never told which check
+failed, because that would let it walk a bad token toward acceptance one guess at a time. The service
+itself is told: each refusal logs `refused a request at the auth gate` at `warn` with a `reason` and
+the underlying error, so an expired service token, a wrong audience and a replayed proof are
+distinguishable in your own logs. A missing or stale DPoP nonce is not a refusal — it is answered
+`401` with a fresh `DPoP-Nonce`, which the outbound client below retries transparently.
 
 ### Outbound (service-to-service)
 
@@ -128,6 +141,39 @@ answered in the browser; the session key is proven at the token exchange), and
 `ParseUnverified` reads a token this service was just issued into the shared claim
 model — for labelling the session it already holds, never for authorizing anything.
 
+### One spelling of an identity code (`identitycode`)
+
+A signatory's identity code arrives written several ways — with the identity type
+and country a certificate or an identity provider puts on it, with the separator
+dropped, as a person writes their national code, or in the `LV/LV/…` shape a
+cross-border login carries. Canonicalise before storing and before comparing, and
+all of them are one person:
+
+```go
+stored, err := identitycode.Canonical(rawFromCertificate, "")     // "PNOLV-12345678901"
+stored, err = identitycode.Canonical(typedCode, chosenCountry)    // the same value
+shown := identitycode.Display(stored)                             // "123456-78901"
+```
+
+The country argument is a **hint**, consulted only when the code names no country
+of its own: the country chosen on the screen the code was typed into, the country
+in the signing certificate, the country recorded for the system that sent it. A
+country in the value always wins, and one that contradicts the hint is ignored
+rather than being an error — a caller's software may or may not put the country on
+the wire, and both have to work.
+
+**The country is never guessed.** A bare code with no country available is refused
+(`ErrCountryRequired`), because the same digits belong to different people in
+different countries. The refusals are sentinel errors, comparable with
+`errors.Is`, and none of them carries the offending code — an identity code is
+personal data, and these errors reach service logs. Validation is shape only: a
+typed code is a *reference* to a person, and what settles who signed is the
+certificate they sign with, so a checksum rule written for one country's format
+could only add ways to refuse a real foreign signatory.
+
+`Key` is for comparing a value of unknown provenance without storing it; storing
+always goes through `Canonical`.
+
 ## Packages
 
 ```
@@ -135,6 +181,7 @@ asclient/     Confidential authorization-code browser login (PKCE + per-session 
 authclient/   Configuration, Client, Azugo middleware, outbound calls
 claims/       Shared JWT claim model (user + service + delegated tokens; `act`)
 dpop/         RFC 9449 proof generation & verification, JWK thumbprint
+identitycode/ One spelling of an identity code — store, compare, show
 jwks/         Caching JWKS client (TTL + unknown-kid refresh)
 nonce/        Stateless HMAC server nonce (DPoP-Nonce)
 replay/       jti replay cache — memory (default) or redis
@@ -171,8 +218,10 @@ go test ./...
 ```
 
 DPoP proof round-trip and tamper/expiry/ath/nonce rejection
-([`dpop`](dpop/dpop_test.go)) and the stateless nonce
-([`nonce`](nonce/nonce_test.go)) are covered. The end-to-end token+JWKS path is
+([`dpop`](dpop/dpop_test.go)), the stateless nonce
+([`nonce`](nonce/nonce_test.go)) and every spelling of an identity code
+([`identitycode`](identitycode/identitycode_test.go), with a fuzz target over the
+round trip a person makes when they retype what they were shown) are covered. The end-to-end token+JWKS path is
 exercised from the `authbyte-core` issuer tests.
 
 ## Contributing
