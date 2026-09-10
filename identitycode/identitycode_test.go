@@ -95,13 +95,14 @@ func TestEveryIdentityTypeInBothPrefixedSpellings(t *testing.T) {
 		country   string
 		head      string
 		tail      string
+		person    bool
 		what      string
 	}{
-		{"PNO", "LV", lvHead, lvTail, "a national personal number"},
-		{"NTR", "LV", ntrHead, ntrTail, "an organisation's trade register number"},
-		{"PAS", "SK", "AB98", "7654", "a passport number: letters and digits"},
-		{"IDC", "BE", "590082", "394654", "a national identity card number"},
-		{"TIN", "EE", "765432", "10987", "a tax identification number"},
+		{"PNO", "LV", lvHead, lvTail, true, "a national personal number"},
+		{"NTR", "LV", ntrHead, ntrTail, false, "an organisation's trade register number"},
+		{"PAS", "SK", "AB98", "7654", true, "a passport number: letters and digits"},
+		{"IDC", "BE", "590082", "394654", true, "a national identity card number"},
+		{"TIN", "EE", "765432", "10987", true, "a tax identification number"},
 	}
 
 	for _, ty := range types {
@@ -133,6 +134,14 @@ func TestEveryIdentityTypeInBothPrefixedSpellings(t *testing.T) {
 				if c.Semantics != ty.semantics || c.Country != ty.country || c.Identifier != ty.head+ty.tail {
 					t.Fatalf("Parse(%q) = %+v, want %s/%s/%s", got, c, ty.semantics, ty.country, ty.head+ty.tail)
 				}
+
+				// And it says whether it belongs to a person, on the code the
+				// package itself produced rather than on a hand-built one — this
+				// is the answer a caller matching a code against a login acts on,
+				// and it must not depend on how the code was spelt on arrival.
+				if c.IsNaturalPerson() != ty.person {
+					t.Fatalf("Parse(%q).IsNaturalPerson() = %v, want %v (%s)", got, c.IsNaturalPerson(), ty.person, ty.what)
+				}
 				if Key(got) != want {
 					t.Fatalf("Key(%q) = %q, want %q", got, Key(got), want)
 				}
@@ -148,6 +157,72 @@ func TestEveryIdentityTypeInBothPrefixedSpellings(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// The natural/legal split, asserted against both of the standard's lists
+// rather than against the handful of types this package currently admits.
+//
+// Both halves are here on purpose. The question is asked in order to REFUSE, so
+// a predicate that answered true for everything would satisfy a test of the
+// natural list alone and let an organisation through every door that asks — and
+// one that answered false for everything would satisfy the legal list and turn
+// every person away. Only the two together say the split is the standard's.
+func TestIsNaturalPersonFollowsTheStandardsTwoLists(t *testing.T) {
+	// [ETSI EN 319 412-1 V1.7.1 §5.1.3] — carried in a certificate's serialNumber.
+	natural := []struct{ semantics, what string }{
+		{"PAS", "a passport number"},
+		{"IDC", "a national identity card number"},
+		{"PNO", "a national personal number"},
+		{"TAX", "a personal tax reference number, the deprecated spelling of TIN"},
+		{"TIN", "a tax identification number"},
+		{"EID", "an electronic identification means"},
+	}
+
+	// [ETSI EN 319 412-1 V1.7.1 §5.1.4] — carried in an organizationIdentifier.
+	legal := []struct{ semantics, what string }{
+		{"VAT", "a national value added tax number"},
+		{"NTR", "a national trade register number"},
+		{"PSD", "a payment service provider's authorisation number"},
+		{"LEI", "a global legal entity identifier"},
+		{"EOR", "an economic operator's registration and identification number"},
+		{"EXC", "an excise number"},
+	}
+
+	for _, ty := range natural {
+		t.Run("natural/"+ty.semantics, func(t *testing.T) {
+			c := Code{Semantics: ty.semantics, Country: "LV", Identifier: lvHead + lvTail}
+			if !c.IsNaturalPerson() {
+				t.Fatalf("%s (%s) is a natural person's identity type, and was not read as one", ty.semantics, ty.what)
+			}
+		})
+	}
+
+	for _, ty := range legal {
+		t.Run("legal/"+ty.semantics, func(t *testing.T) {
+			c := Code{Semantics: ty.semantics, Country: "LV", Identifier: ntrHead + ntrTail}
+			if c.IsNaturalPerson() {
+				t.Fatalf("%s (%s) identifies an organisation, and was read as a person", ty.semantics, ty.what)
+			}
+		})
+	}
+
+	// And everything that is neither list, because the caller asking is about to
+	// let somebody in or turn them away and there is no third answer to give it.
+	for _, c := range []struct {
+		name string
+		code Code
+	}{
+		{"nothing at all", Code{}},
+		{"a locally defined type, which the standard leaves to a national definition", Code{Semantics: "EI", Country: "SE", Identifier: lvHead + lvTail}},
+		{"a type no edition of the standard defines", Code{Semantics: "ZZZ", Country: "LV", Identifier: lvHead + lvTail}},
+		{"the type in lower case, which is not how a stored code is written", Code{Semantics: "pno", Country: "LV", Identifier: lvHead + lvTail}},
+	} {
+		t.Run("neither/"+c.name, func(t *testing.T) {
+			if c.code.IsNaturalPerson() {
+				t.Fatalf("%s was read as a natural person", c.name)
+			}
+		})
 	}
 }
 

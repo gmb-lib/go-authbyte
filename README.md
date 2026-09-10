@@ -182,6 +182,27 @@ could only add ways to refuse a real foreign signatory.
 `Key` is for comparing a value of unknown provenance without storing it; storing
 always goes through `Canonical`.
 
+**A code also says whether it belongs to a person or to an organisation.** The
+identity types come in two lists, and a certificate carries them in two different
+places — a natural person's code in the subject's `serialNumber`, a legal person's
+in its `organizationIdentifier`:
+
+```go
+c, err := identitycode.Parse(stored)
+if err == nil && !c.IsNaturalPerson() {
+    // a trade-register number: a valid identity, and one no login answers to
+}
+```
+
+Ask it wherever a code has to name somebody who will later authenticate — a party
+expected to act, a slot waiting to be claimed. Nobody authenticates as an
+organisation: its electronic seal is a signing method its people reach for after
+identifying themselves, so a code naming an organisation is an identity no login
+will ever answer to. `IsNaturalPerson` is false for anything the standard does not
+place with a natural person, an unrecognised type included, because the question is
+asked in order to refuse. The list is the standard's, not this package's, so it
+already covers identity types this package does not yet recognise.
+
 ## Packages
 
 ```
