@@ -4,6 +4,53 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.23.0
+
+### Added — `identitycode` answers whether a code belongs to a person or to an organisation
+
+`Code.IsNaturalPerson()` reports whether an identity code identifies a natural person. The standard
+splits the identity types into two lists, and a certificate carries them in two different places: a
+natural person's code in the subject's `serialNumber`, a legal person's in its
+`organizationIdentifier`. That split decides what a code can be used for — wherever a code has to
+name somebody who will later authenticate, only a natural person's code can ever be matched, because
+nobody authenticates as an organisation. Its electronic seal is a signing method its people reach for
+after identifying themselves.
+
+```go
+c, err := identitycode.Parse(stored)
+if err == nil && !c.IsNaturalPerson() {
+    // a trade-register number: a valid identity, and one no login will ever answer to
+}
+```
+
+It is false for anything the standard does not place with a natural person — an unrecognised type and
+a zero `Code` included — because the question is asked in order to refuse, and a caller that cannot
+tell whose code it holds has to refuse.
+
+**If your code keeps its own list of which identity types are people, this replaces it.** The list
+here is the standard's rather than this package's: it names every natural-person type the standard
+defines, including the ones `identitycode` does not yet recognise, so admitting a further type later
+does not silently change the answer. The behaviour of every existing call is unchanged, which is why
+this is an addition and nothing else.
+
+### Added — the editions the citations resolve against are pinned
+
+`SPECREFS.md` now lists the standards this library cites and the exact edition each claim was checked
+against, so a bracketed citation in a comment is resolvable by a reader who has never seen this
+repository. No code changed.
+
+### Added — every identity type is exercised, in both spellings a prefixed code arrives in
+
+`identitycode`'s test suite now crosses **all five** recognised identity types — `PNO`, `NTR`, `PAS`, `IDC`,
+`TIN` — with the separator, without it, and in lower case, asserting the canonical value, `Parse`, `Key` and
+`Display` on each. **No behaviour changed**: this is coverage, and a consumer needs no action.
+
+It is worth an entry because of what it found: a tax number (`TIN`) had **no vector at all** in this suite,
+and an identity card (`IDC`) appeared only in a display case — so a code arriving under either was untested
+on the one path that decides who a person is. Removing `IDC` from the recognised set is caught by nothing
+else in the suite, which is how the gap was measured rather than assumed. The store side of the same rule
+carries the identical matrix.
+
 ## v0.22.0
 
 ### Fixed

@@ -68,10 +68,12 @@ var (
 const SemanticsPersonalNumber = "PNO"
 
 // The identity types this package recognises, from the standard semantics for
-// the serial number of a signing certificate: a national personal number, a
-// national trade-register number (organisations, and the electronic seals they
-// sign with), a passport number, a national identity card number and a tax
-// identification number.
+// the identity of a certificate's subject: a national personal number, a
+// passport number, a national identity card number and a tax identification
+// number, which belong to a natural person [ETSI EN 319 412-1 V1.7.1 §5.1.3],
+// and a national trade-register number, which belongs to a legal person —
+// organisations, and the electronic seals they sign with
+// [ETSI EN 319 412-1 V1.7.1 §5.1.4].
 //
 // The set is deliberately data. Recognising a further type is one entry here
 // and one release — never a decision taken at a call site, because a type this
@@ -82,6 +84,31 @@ var recognisedSemantics = map[string]struct{}{
 	"PAS": {},
 	"IDC": {},
 	"TIN": {},
+}
+
+// The identity types that belong to a natural person, from the standard's
+// natural-person semantics [ETSI EN 319 412-1 V1.7.1 §5.1.3]. Every other
+// defined type identifies a legal person and is listed in the clause beside it
+// [ETSI EN 319 412-1 V1.7.1 §5.1.4].
+//
+// The split is the standard's, so this set names every natural-person type the
+// standard defines rather than only the ones recognisedSemantics admits today.
+// A type admitted there tomorrow then already answers correctly, instead of
+// leaving a second edit for somebody to remember — and remembering it is not
+// optional, because the wrong answer here lets an organisation through a door
+// that only a person can walk through.
+//
+// A locally defined type (two characters and a colon) appears in BOTH clauses:
+// whether it names a person is a national definition, so it is deliberately
+// absent here and refused where it arrives, which is the same answer for the
+// same reason.
+var naturalPersonSemantics = map[string]struct{}{
+	"PAS": {}, // a passport number
+	"IDC": {}, // a national identity card number
+	"PNO": {}, // a national personal number
+	"TAX": {}, // a personal tax reference number, deprecated in favour of TIN
+	"TIN": {}, // a tax identification number
+	"EID": {}, // an electronic identification means
 }
 
 var (
@@ -284,6 +311,29 @@ type Code struct {
 // String returns the canonical stored spelling.
 func (c Code) String() string {
 	return c.Semantics + c.Country + "-" + c.Identifier
+}
+
+// IsNaturalPerson reports whether the code identifies a person rather than an
+// organisation.
+//
+// The standard splits the identity types into two lists, and a certificate
+// carries them in two different places: a natural person's code in the
+// subject's serialNumber, a legal person's in its organizationIdentifier. The
+// distinction decides what a code can be used for. Wherever a code has to name
+// somebody who will later authenticate — a party expected to act, a slot
+// waiting to be claimed — only a natural person's code can ever be matched,
+// because nobody authenticates as an organisation: an organisation's electronic
+// seal is a signing method its people reach for after identifying themselves.
+// A code naming a legal person is a perfectly valid identity, and one that no
+// login will ever answer to.
+//
+// It is false for anything the standard does not place with a natural person,
+// an unrecognised type and a zero Code included. The question is asked in order
+// to refuse, and a caller that cannot tell whose code it holds has to refuse.
+func (c Code) IsNaturalPerson() bool {
+	_, ok := naturalPersonSemantics[c.Semantics]
+
+	return ok
 }
 
 // Parse takes a stored identity code apart. It accepts the stored spelling and
