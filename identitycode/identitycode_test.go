@@ -76,6 +76,81 @@ func TestCanonicalSpellings(t *testing.T) {
 	}
 }
 
+// Every identity type this package recognises, crossed with both spellings a
+// prefixed code arrives in: with the national separator and without it.
+//
+// It is a MATRIX rather than a row per type on purpose. The separator handling
+// and the type handling are independent in the code, so a table that crosses
+// them catches a rule that was only ever written for personal numbers — and
+// until this test, two of the five types had no vector at all here. A tax
+// number appeared in neither this suite nor the store's, and an identity card
+// only in a display case, so a code arriving under either was in practice
+// untested on the one path that decides who a person is.
+//
+// Each type carries its own digits, so a wrong answer names the type it came
+// from instead of matching another row by accident.
+func TestEveryIdentityTypeInBothPrefixedSpellings(t *testing.T) {
+	types := []struct {
+		semantics string
+		country   string
+		head      string
+		tail      string
+		what      string
+	}{
+		{"PNO", "LV", lvHead, lvTail, "a national personal number"},
+		{"NTR", "LV", ntrHead, ntrTail, "an organisation's trade register number"},
+		{"PAS", "SK", "AB98", "7654", "a passport number: letters and digits"},
+		{"IDC", "BE", "590082", "394654", "a national identity card number"},
+		{"TIN", "EE", "765432", "10987", "a tax identification number"},
+	}
+
+	for _, ty := range types {
+		want := ty.semantics + ty.country + "-" + ty.head + ty.tail
+		spellings := []struct{ name, raw string }{
+			{"with the national separator", ty.semantics + ty.country + "-" + ty.head + "-" + ty.tail},
+			{"without the separator", ty.semantics + ty.country + "-" + ty.head + ty.tail},
+			{"in lower case", strings.ToLower(ty.semantics + ty.country + "-" + ty.head + "-" + ty.tail)},
+		}
+		for _, sp := range spellings {
+			t.Run(ty.semantics+"/"+sp.name, func(t *testing.T) {
+				// The hint contradicts the value on every row, because a country
+				// the value states must win for every type and not only for the
+				// one the rule was written against.
+				got, err := Canonical(sp.raw, "ZZ")
+				if err != nil {
+					t.Fatalf("Canonical(%q) refused %s: %v", sp.raw, ty.what, err)
+				}
+				if got != want {
+					t.Fatalf("Canonical(%q) = %q, want %q (%s)", sp.raw, got, want, ty.what)
+				}
+
+				// And it comes apart again into the three things it is made of,
+				// which is what every caller reading a stored value depends on.
+				c, err := Parse(got)
+				if err != nil {
+					t.Fatalf("Parse(%q): %v", got, err)
+				}
+				if c.Semantics != ty.semantics || c.Country != ty.country || c.Identifier != ty.head+ty.tail {
+					t.Fatalf("Parse(%q) = %+v, want %s/%s/%s", got, c, ty.semantics, ty.country, ty.head+ty.tail)
+				}
+				if Key(got) != want {
+					t.Fatalf("Key(%q) = %q, want %q", got, Key(got), want)
+				}
+
+				// Nothing but a Latvian personal number is ever shown split, so
+				// for every other row the whole code — type and country included —
+				// is what a person sees. That is the guard against a namesake and
+				// an organisation rendering as one string.
+				if shown := Display(got); ty.semantics != SemanticsPersonalNumber || ty.country != "LV" {
+					if shown != want {
+						t.Fatalf("Display(%q) = %q, want the whole code %q for %s", got, shown, want, ty.what)
+					}
+				}
+			})
+		}
+	}
+}
+
 // A country in the value always beats the hint. A partner's system may or may
 // not put the country on the wire, and when it does, that is the fact about
 // the person — our screen's default is not.

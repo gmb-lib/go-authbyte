@@ -4,6 +4,22 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## Unreleased
+
+The last tagged version is **v0.22.0**; what follows is on the branch and not in a release yet.
+
+### Added — every identity type is exercised, in both spellings a prefixed code arrives in
+
+`identitycode`'s test suite now crosses **all five** recognised identity types — `PNO`, `NTR`, `PAS`, `IDC`,
+`TIN` — with the separator, without it, and in lower case, asserting the canonical value, `Parse`, `Key` and
+`Display` on each. **No behaviour changed**: this is coverage, and a consumer needs no action.
+
+It is worth an entry because of what it found: a tax number (`TIN`) had **no vector at all** in this suite,
+and an identity card (`IDC`) appeared only in a display case — so a code arriving under either was untested
+on the one path that decides who a person is. Removing `IDC` from the recognised set is caught by nothing
+else in the suite, which is how the gap was measured rather than assumed. The store side of the same rule
+carries the identical matrix.
+
 ## v0.22.0
 
 ### Fixed

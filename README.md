@@ -227,9 +227,11 @@ go test ./...
 
 DPoP proof round-trip and tamper/expiry/ath/nonce rejection
 ([`dpop`](dpop/dpop_test.go)), the stateless nonce
-([`nonce`](nonce/nonce_test.go)) and every spelling of an identity code
-([`identitycode`](identitycode/identitycode_test.go), with a fuzz target over the
-round trip a person makes when they retype what they were shown) are covered. The end-to-end token+JWKS path is
+([`nonce`](nonce/nonce_test.go)) and every spelling of an identity code — for
+**every identity type this library recognises**, crossed with the separator, no
+separator and lower case ([`identitycode`](identitycode/identitycode_test.go),
+with a fuzz target over the round trip a person makes when they retype what they
+were shown) are covered. The end-to-end token+JWKS path is
 exercised from the `authbyte-core` issuer tests.
 
 ## Contributing
