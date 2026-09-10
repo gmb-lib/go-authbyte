@@ -4,9 +4,9 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
-## Unreleased
+## v0.22.1
 
-The last tagged version is **v0.22.0**; what follows is on the branch and not in a release yet.
+A patch: the library's behaviour is unchanged, and the only source touched is a test.
 
 ### Added — every identity type is exercised, in both spellings a prefixed code arrives in
 
