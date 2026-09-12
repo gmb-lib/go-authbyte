@@ -1,11 +1,11 @@
 module github.com/gmb-lib/go-authbyte
 
-go 1.26.6
+go 1.27.0
 
 require (
 	azugo.io/azugo v0.38.1
 	azugo.io/core v0.38.1
-	github.com/gmb-lib/go-platform-kit v1.11.2
+	github.com/gmb-lib/go-platform-kit v1.11.3
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-quicktest/qt v1.102.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -41,7 +41,7 @@ require (
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/molecule-man/go-brrr v1.0.1 // indirect
+	github.com/molecule-man/go-brrr v1.1.0 // indirect
 	github.com/oklog/ulid/v2 v2.1.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
