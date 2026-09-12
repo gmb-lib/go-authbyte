@@ -4,6 +4,35 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.23.1
+
+Dependency maintenance with one thing to act on: **this library now needs Go 1.27**. No source
+changed here and nothing it does behaves differently.
+
+### Changed
+
+- **The module declares `go 1.27.0`** (was `1.26.6`), so your own module has to be on Go 1.27
+  before it can build against this one. A dependency's `go` line does **not** make the go command
+  fetch a newer toolchain for you — measured both ways: a consumer whose own `go` directive is
+  lower stops with a `requires go >= 1.27.0 (running go 1.26.6)` error, and it stops there with
+  `GOTOOLCHAIN` on its `auto` default just as it does under `local`. Raise your own `go` directive
+  to `1.27.0` first; from there the go command downloads and uses the 1.27 toolchain by itself, so
+  nobody has to install Go by hand. CI that reads `go-version-file: go.mod` follows the bump with
+  no workflow edit — a workflow naming a Go version in the YAML needs that line changed.
+
+### Notes
+
+- **`github.com/gmb-lib/go-platform-kit` → v1.11.3** (was v1.11.2), which is itself a dependency
+  release: it carries the same Go 1.27 requirement and no source change. Nothing this library takes
+  from it moved.
+
+- One indirect dependency moved and nothing here calls it: `github.com/molecule-man/go-brrr` →
+  **v1.1.0**, the brotli implementation fasthttp pulls in. Relevant only if you audit dependencies
+  or keep a bill of materials.
+
+- The gate is green on the new set: `go mod verify`, `go mod tidy -diff`, build, vet, `gofmt`, and
+  `go test -race` across all seven packages with **0 races**; `govulncheck` finds nothing.
+
 ## v0.23.0
 
 ### Added — `identitycode` answers whether a code belongs to a person or to an organisation
