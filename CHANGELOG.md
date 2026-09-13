@@ -4,6 +4,69 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.24.0
+
+### Added — a refused outbound call can be read, instead of only logged
+
+`authclient.Error` is a non-2xx answer to one of the calls the outbound helpers make. Until now such
+an answer came back as a plain error with the status written into its message text, so a caller had
+no way to tell *the service refused this request* from *the service was never reached* — and had to
+report the worse of the two. On an edge that means a person who was given a true, actionable answer
+is told instead that something is broken.
+
+```go
+_, err := ac.AcquireDelegatedToken(ctx, audience, scope, subject, subjectToken)
+
+var refused *authclient.Error
+if errors.As(err, &refused) && refused.Status < 500 {
+    // The request was answered and declined. refused.Status is that answer and
+    // refused.Body is the sender's own words — relay the refusal rather than
+    // reporting an outage.
+    relay(refused.Status, refused.Body)
+
+    return
+}
+// Anything else really is a failure to reach the service.
+```
+
+**Nothing is required of you.** The type satisfies `error`, so every existing `if err != nil` behaves
+exactly as before; reading the answer is opt-in through `errors.As`.
+
+`Error.Hop` says which call answered — `authclient.HopToken` for the ask to the auth service's token
+endpoint, `authclient.HopResource` for the call that carries the token on to the target service. One
+helper call makes both, so a caller cannot tell them apart from the call site: a refusal at the first
+is about your service's own standing, at the second about the request it went on to make. Today only
+the token call reports this type; a resource call's non-2xx is still returned untyped, so treat a
+`Hop` you did not expect as unhandled rather than assuming there is only one.
+
+A request that was never answered — unreachable service, lost connection, expired deadline — is
+deliberately **not** this type, and neither is a token answer that arrives malformed. Both are
+failures to obtain an answer, not answers.
+
+### Changed — the error message no longer repeats the answer's body
+
+The message for a refused token call was `auth-client: token endpoint returned 403: {…the whole
+body…}` and is now `auth-client: the token call responded 403`. **If you log this error, that log
+line stops carrying the body.** The body did not disappear — it is on `Error.Body`, where reading it
+is a decision you make rather than something that happens to every caller that logs an error. That
+matters because the body is another service's wording and can describe the person the call was made
+for, and an error message ends up in logs kept by callers who never chose to publish it.
+
+If your log line depended on that detail, take it from the field:
+
+```go
+var refused *authclient.Error
+if errors.As(err, &refused) {
+    log.Warn("the register refused us", "status", refused.Status, "answer", refused.Body)
+}
+```
+
+### Notes
+
+- No dependency moved and no other behaviour changed. The gate is green on the new set: build, vet,
+  `go mod tidy -diff`, `gofmt`, `golangci-lint` with 0 issues, and `go test -race` across all seven
+  packages with 0 races.
+
 ## v0.23.1
 
 Dependency maintenance with one thing to act on: **this library now needs Go 1.27**. No source

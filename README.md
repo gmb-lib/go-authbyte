@@ -105,6 +105,30 @@ the upstream work alone can take tens of seconds — use the per-call variants
 still runs under the default (it must be fast), and only the resource call runs
 under the caller's ceiling.
 
+**When the auth service refuses**, the answer is readable rather than only
+loggable. A refusal and an unreachable service are different events — one is a
+decision about your request, the other a failure to make it — and a caller that
+cannot tell them apart has to report the worse of the two:
+
+```go
+_, err := ac.AcquireDelegatedToken(ctx, audience, scope, subject, subjectToken)
+
+var refused *authclient.Error
+if errors.As(err, &refused) && refused.Status < 500 {
+    // Answered and declined: refused.Body carries the sender's own words.
+    return relay(refused.Status, refused.Body)
+}
+// Anything else is a failure to reach the service at all.
+```
+
+`Error.Hop` says which call answered: `HopToken` the ask to the token endpoint,
+`HopResource` the call that carries the token on to the target service. One
+helper call makes both, so the call site alone cannot tell them apart. The error
+satisfies `error`, so existing handling is unaffected and reading the answer is
+opt-in; its message states the status only, and the body stays in its field
+because it is another service's wording and may describe the person the call was
+made for.
+
 ### Browser login from a confidential back-end (`asclient`)
 
 The third job, for a back-end that logs a *browser user* in and holds the tokens
