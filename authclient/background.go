@@ -39,6 +39,22 @@ func (c *Client) DoService(ctx context.Context, audience, scope, method, fullURL
 	return c.doBackground(ctx, audience, token, method, fullURL, reqHeader, body)
 }
 
+// DoServiceForTenant is DoService for a service account that is also a member of
+// an organisation, acting for it: the token it uses carries that organisation, so
+// a callee that scopes by organisation reads it from the token rather than from
+// anything this call puts in the request.
+//
+// The organisation is per CALL and not per client, because one service commonly
+// acts for many — an edge serving every tenant is the ordinary shape.
+func (c *Client) DoServiceForTenant(ctx context.Context, audience, scope, tenant, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
+	token, err := c.AcquireServiceTokenForTenant(ctx, audience, scope, tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.doBackground(ctx, audience, token, method, fullURL, reqHeader, body)
+}
+
 // DoServiceOnBehalf is DoService acting on behalf of the end user (subjectSub):
 // it obtains a delegated token by exchanging subjectToken (RFC 8693) instead of
 // a plain service token, so the callee owner-filters on the user subject

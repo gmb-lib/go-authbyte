@@ -4,6 +4,45 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.25.0
+
+### Added — a service account that is a member of an organisation can name it when asking for a token
+
+Some service accounts are also **members of an organisation**, and act for one. The authority has
+always accepted a `tenant` on the client-credentials grant — it resolves that membership and puts the
+organisation in the token — but this library never sent one, so a caller that needed a tenant-named
+token had to build the token request itself and re-implement DPoP proofs, caching and rotation to do it.
+
+```go
+// Unchanged, and still what every existing caller gets: no organisation named.
+tok, err := c.AcquireServiceToken(ctx, "svc:document", "documents:write")
+
+// Acting for one organisation.
+tok, err := c.AcquireServiceTokenForTenant(ctx, "svc:document", "documents:write", tenantID)
+
+// And the whole call in one hop.
+res, err := c.DoServiceForTenant(ctx, "svc:document", "documents:write", tenantID,
+    http.MethodPost, url, header, body)
+```
+
+**Nothing existing moves.** `AcquireServiceToken` now delegates with an empty organisation, and an
+empty organisation sends no field at all — a `tenant=` on the wire would be a request to act for an
+organisation named `""`, which is not the same as not naming one.
+
+### The organisation is per CALL, and it is part of the token cache key
+
+Both of those are load-bearing, so they are stated rather than left to be discovered.
+
+**Per call, not per client.** One service commonly acts for many organisations — a single edge serving
+every tenant is the ordinary shape — so an organisation configured once on the client would be wrong
+for most of its calls.
+
+**In the cache key.** Tokens are cached per `(audience, scope)`; they are now cached per
+`(audience, scope, organisation)`. Without that, a service acting for two organisations would be handed
+the token minted for the first when it called for the second, and the callee would honour it — the
+boundary those organisations rely on would be gone, silently, and only under load. The key is built so
+a tenanted and an untenanted entry can never collide.
+
 ## v0.24.0
 
 ### Added — a refused outbound call can be read, instead of only logged
