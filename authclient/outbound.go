@@ -35,7 +35,30 @@ type tokenResponse struct {
 // the cached one is near expiry. Tokens are cached per (audience, scope) and
 // refreshed early (ServiceTokenEarlyRefresh before exp).
 func (c *Client) AcquireServiceToken(ctx context.Context, audience, scope string) (string, error) {
+	return c.AcquireServiceTokenForTenant(ctx, audience, scope, "")
+}
+
+// AcquireServiceTokenForTenant is AcquireServiceToken for a service account that
+// is also a MEMBER of an organisation and is acting for it: naming the
+// organisation is what makes the authority resolve that membership and put it in
+// the token, and a resource service that scopes by organisation reads it from
+// there rather than from anything in the request.
+//
+// An empty tenant asks for the plain service token, which carries no such claim —
+// that is what every existing caller gets, unchanged.
+//
+// THE ORGANISATION IS PART OF THE CACHE KEY, and that is the whole reason this is
+// a separate method rather than a field on the client. One service commonly acts
+// for many organisations — a single edge serving every tenant is the ordinary
+// shape — so a cache keyed only on (audience, scope) would hand a token minted
+// for one organisation to a call meant for another, and the callee would honour
+// it. The marker below cannot occur inside an audience or a scope, so a tenanted
+// and an untenanted key can never collide.
+func (c *Client) AcquireServiceTokenForTenant(ctx context.Context, audience, scope, tenant string) (string, error) {
 	key := audience + "|" + scope
+	if tenant != "" {
+		key += "|tenant=" + tenant
+	}
 
 	c.mu.Lock()
 	if t, ok := c.tokens[key]; ok && time.Until(t.exp) > c.cfg.ServiceTokenEarlyRefresh {
@@ -46,7 +69,7 @@ func (c *Client) AcquireServiceToken(ctx context.Context, audience, scope string
 	}
 	c.mu.Unlock()
 
-	tok, ttl, err := c.requestServiceToken(ctx, audience, scope)
+	tok, ttl, err := c.requestServiceToken(ctx, audience, scope, tenant)
 	if err != nil {
 		return "", err
 	}
@@ -90,7 +113,11 @@ func (c *Client) AcquireDelegatedToken(ctx context.Context, audience, scope, sub
 
 // requestServiceToken performs the client-credentials hop against the auth
 // service /token endpoint, handling the DPoP-Nonce challenge transparently.
-func (c *Client) requestServiceToken(ctx context.Context, audience, scope string) (string, time.Duration, error) {
+//
+// A non-empty tenant names the organisation this client is acting for. It is sent
+// only when there is one: an empty value would be a request to act for an
+// organisation called "", which is not the same thing as not naming one.
+func (c *Client) requestServiceToken(ctx context.Context, audience, scope, tenant string) (string, time.Duration, error) {
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
 	form.Set("client_id", c.cfg.ServiceClientID)
@@ -98,6 +125,9 @@ func (c *Client) requestServiceToken(ctx context.Context, audience, scope string
 	form.Set("audience", audience)
 	if scope != "" {
 		form.Set("scope", scope)
+	}
+	if tenant != "" {
+		form.Set("tenant", tenant)
 	}
 
 	return c.postTokenForm(ctx, form)
