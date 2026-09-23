@@ -174,9 +174,9 @@ cross-border login carries. Canonicalise before storing and before comparing, an
 all of them are one person:
 
 ```go
-stored, err := identitycode.Canonical(rawFromCertificate, "")     // "PNOLV-12345678901"
+stored, err := identitycode.Canonical(rawFromCertificate, "")     // "PNOLV-XXXXXXXXXXX"
 stored, err = identitycode.Canonical(typedCode, chosenCountry)    // the same value
-shown := identitycode.Display(stored)                             // "123456-78901"
+shown := identitycode.Display(stored)                             // "XXXXXX-XXXXX"
 ```
 
 `Display` is the spelling to put in front of a person: their own national code,

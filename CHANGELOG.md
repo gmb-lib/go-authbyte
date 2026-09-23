@@ -193,18 +193,18 @@ carries the identical matrix.
   same digits in two countries belong to two people.
 
   Where a country's own way of writing the number is known, that spelling is unchanged — a Latvian personal
-  number still reads `123456-78901`. Everywhere else `Display` now returns the code **exactly as stored**:
+  number still reads `XXXXXX-XXXXX`. Everywhere else `Display` now returns the code **exactly as stored**:
 
   ```go
-  identitycode.Display("PNOLV-01018015097")   // "010180-15097"     (unchanged)
-  identitycode.Display("PNOEE-23456789012")   // "PNOEE-23456789012"  (was "23456789012")
-  identitycode.Display("NTRLV-34567890123")   // "NTRLV-34567890123"  (was "34567890123")
+  identitycode.Display("PNOLV-XXXXXXXXXXX")   // "XXXXXX-XXXXX"     (unchanged)
+  identitycode.Display("PNOEE-XXXXXXXXXXX")   // "PNOEE-XXXXXXXXXXX"  (was "XXXXXXXXXXX")
+  identitycode.Display("NTRLV-XXXXXXXXXXX")   // "NTRLV-XXXXXXXXXXX"  (was "XXXXXXXXXXX")
   ```
 
   **What it means for code that already uses it:** nothing renders differently for a Latvian personal number,
   which is the case the function was written for. Any other code now renders longer and carries its type
   prefix — a screen with a fixed-width field for it may need a look. A prefixed spelling was chosen over
-  writing the country in front (`EE 23456789012`) deliberately: the canonicaliser reads a space or a hyphen as
+  writing the country in front (`EE XXXXXXXXXXX`) deliberately: the canonicaliser reads a space or a hyphen as
   a separator, so a person retyping what they were shown would have had the country absorbed into the
   identifier and resolved to a **different key, with no error**. The stored spelling round-trips, and the fuzz
   test asserts it does.
@@ -215,10 +215,10 @@ carries the identical matrix.
 
 - **New package `identitycode` — one spelling of an identity code, for storing, comparing and
   showing.** A signatory's identity code reaches a service written several ways: with the identity
-  type and country a certificate or an identity provider puts on it (`PNOLV-123456-78901`), with
-  the separator dropped (`PNOLV-12345678901`), as a person writes their national code
-  (`123456-78901`), as a form sends it once the separator is gone (`12345678901`), or in the
-  `LV/LV/123456-78901` shape a cross-border login carries. Compared as text those are five
+  type and country a certificate or an identity provider puts on it (`PNOLV-XXXXXX-XXXXX`), with
+  the separator dropped (`PNOLV-XXXXXXXXXXX`), as a person writes their national code
+  (`XXXXXX-XXXXX`), as a form sends it once the separator is gone (`XXXXXXXXXXX`), or in the
+  `LV/LV/XXXXXX-XXXXX` shape a cross-border login carries. Compared as text those are five
   different people, and the one who signed a document under one spelling could not find it under
   another.
 
@@ -227,12 +227,12 @@ carries the identical matrix.
   compared with plain equality:
 
   ```go
-  stored, err := identitycode.Canonical(" pnolv-123456-78901 ", "")  // "PNOLV-12345678901"
-  stored, err = identitycode.Canonical("123456-78901", "LV")         // "PNOLV-12345678901"
-  stored, err = identitycode.Canonical("12345678901", "LV")          // "PNOLV-12345678901"
-  stored, err = identitycode.Canonical("LV/LV/123456-78901", "")     // "PNOLV-12345678901"
+  stored, err := identitycode.Canonical(" pnolv-XXXXXX-XXXXX ", "")  // "PNOLV-XXXXXXXXXXX"
+  stored, err = identitycode.Canonical("XXXXXX-XXXXX", "LV")         // "PNOLV-XXXXXXXXXXX"
+  stored, err = identitycode.Canonical("XXXXXXXXXXX", "LV")          // "PNOLV-XXXXXXXXXXX"
+  stored, err = identitycode.Canonical("LV/LV/XXXXXX-XXXXX", "")     // "PNOLV-XXXXXXXXXXX"
 
-  identitycode.Display("PNOLV-12345678901")                          // "123456-78901"
+  identitycode.Display("PNOLV-XXXXXXXXXXX")                          // "XXXXXX-XXXXX"
   identitycode.Key(someValueOfUnknownProvenance)                     // the value to compare by
   ```
 
