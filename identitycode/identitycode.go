@@ -4,7 +4,7 @@
 //
 // The same signatory's code reaches a service written several ways. From a card
 // certificate or an identity provider it carries the identity type and the
-// country ("PNOLV-123456-78901"). A person typing it into a form writes only
+// country ("PNOLV-XXXXXX-XXXXX"). A person typing it into a form writes only
 // their national code, with or without its separator. A partner's system may
 // send either. Compared character by character those are four different people,
 // and the one who signed a document under one spelling cannot find it under
@@ -239,7 +239,7 @@ func Key(stored string) string {
 //
 // THE COUNTRY IS NEVER DROPPED, and neither is the identity type. Where a
 // country's own way of writing the number is known, that spelling identifies it
-// on its own — "123456-78901" reads as a personal number to a Latvian and to
+// on its own — "XXXXXX-XXXXX" reads as a personal number to a Latvian and to
 // nobody else. Everywhere else there is no such spelling to fall back on, and a
 // bare identifier would render a person, a foreign namesake holding the same
 // digits, and an organisation's register number as one identical string. Two of

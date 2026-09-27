@@ -4,6 +4,38 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.26.0
+
+### Added — `permissions`: the acts a service enforces, declared once and checked on every route
+
+A service that checks permissions on its routes kept three things in step by hand: the list it registers with
+the membership register, the checks its routes make, and a test that the two agree. This package holds all
+three, so a service writes only its list:
+
+```go
+var Permissions = permissions.MustNew("projects", "Project and workflow engine", []permissions.Permission{
+    {Feature: "task/comment", Act: "add", Description: "Comment on a task",
+        Class: permissions.Ordinary, Plane: permissions.Object,
+        Labels: map[string]string{"lv": "Komentēt uzdevumu"}},
+})
+
+gate := Permissions.Gate(recordRefusal)
+v1.Post("/tasks/{id}/comments", gate.OneOf(permissions.Levels("projects", "log", "write"), r.commentAdd,
+    Permissions.Declared("task/comment", "add")))
+```
+
+- `Declared` stops the service at load when a route checks an act the list does not declare.
+- The route gate passes one of the permissions or all of them, beside an optional level of the service's own
+  ladder, and records what each route accepts.
+- `Section()` and `Command()` render and print the list as the membership register's configuration section. Each
+  entry carries its `plane` (`tenant` or `object`), its `labels` per language and its `retired` mark, which the
+  register reads from the release that accepts them; an older register refuses a declaration carrying them.
+- A library's permissions join the service's under the service's key, covered by the same checks.
+- `permissionstest.Check` fails a build whose routes and list disagree in either direction.
+
+**Nothing existing moves.** It is a new package, and `github.com/spf13/cobra` becomes a direct requirement (it was
+already required, indirectly).
+
 ## v0.25.0
 
 ### Added — a service account that is a member of an organisation can name it when asking for a token
@@ -193,18 +225,18 @@ carries the identical matrix.
   same digits in two countries belong to two people.
 
   Where a country's own way of writing the number is known, that spelling is unchanged — a Latvian personal
-  number still reads `123456-78901`. Everywhere else `Display` now returns the code **exactly as stored**:
+  number still reads `XXXXXX-XXXXX`. Everywhere else `Display` now returns the code **exactly as stored**:
 
   ```go
-  identitycode.Display("PNOLV-01018015097")   // "010180-15097"     (unchanged)
-  identitycode.Display("PNOEE-23456789012")   // "PNOEE-23456789012"  (was "23456789012")
-  identitycode.Display("NTRLV-34567890123")   // "NTRLV-34567890123"  (was "34567890123")
+  identitycode.Display("PNOLV-XXXXXXXXXXX")   // "XXXXXX-XXXXX"     (unchanged)
+  identitycode.Display("PNOEE-XXXXXXXXXXX")   // "PNOEE-XXXXXXXXXXX"  (was "XXXXXXXXXXX")
+  identitycode.Display("NTRLV-XXXXXXXXXXX")   // "NTRLV-XXXXXXXXXXX"  (was "XXXXXXXXXXX")
   ```
 
   **What it means for code that already uses it:** nothing renders differently for a Latvian personal number,
   which is the case the function was written for. Any other code now renders longer and carries its type
   prefix — a screen with a fixed-width field for it may need a look. A prefixed spelling was chosen over
-  writing the country in front (`EE 23456789012`) deliberately: the canonicaliser reads a space or a hyphen as
+  writing the country in front (`EE XXXXXXXXXXX`) deliberately: the canonicaliser reads a space or a hyphen as
   a separator, so a person retyping what they were shown would have had the country absorbed into the
   identifier and resolved to a **different key, with no error**. The stored spelling round-trips, and the fuzz
   test asserts it does.
@@ -215,10 +247,10 @@ carries the identical matrix.
 
 - **New package `identitycode` — one spelling of an identity code, for storing, comparing and
   showing.** A signatory's identity code reaches a service written several ways: with the identity
-  type and country a certificate or an identity provider puts on it (`PNOLV-123456-78901`), with
-  the separator dropped (`PNOLV-12345678901`), as a person writes their national code
-  (`123456-78901`), as a form sends it once the separator is gone (`12345678901`), or in the
-  `LV/LV/123456-78901` shape a cross-border login carries. Compared as text those are five
+  type and country a certificate or an identity provider puts on it (`PNOLV-XXXXXX-XXXXX`), with
+  the separator dropped (`PNOLV-XXXXXXXXXXX`), as a person writes their national code
+  (`XXXXXX-XXXXX`), as a form sends it once the separator is gone (`XXXXXXXXXXX`), or in the
+  `LV/LV/XXXXXX-XXXXX` shape a cross-border login carries. Compared as text those are five
   different people, and the one who signed a document under one spelling could not find it under
   another.
 
@@ -227,12 +259,12 @@ carries the identical matrix.
   compared with plain equality:
 
   ```go
-  stored, err := identitycode.Canonical(" pnolv-123456-78901 ", "")  // "PNOLV-12345678901"
-  stored, err = identitycode.Canonical("123456-78901", "LV")         // "PNOLV-12345678901"
-  stored, err = identitycode.Canonical("12345678901", "LV")          // "PNOLV-12345678901"
-  stored, err = identitycode.Canonical("LV/LV/123456-78901", "")     // "PNOLV-12345678901"
+  stored, err := identitycode.Canonical(" pnolv-XXXXXX-XXXXX ", "")  // "PNOLV-XXXXXXXXXXX"
+  stored, err = identitycode.Canonical("XXXXXX-XXXXX", "LV")         // "PNOLV-XXXXXXXXXXX"
+  stored, err = identitycode.Canonical("XXXXXXXXXXX", "LV")          // "PNOLV-XXXXXXXXXXX"
+  stored, err = identitycode.Canonical("LV/LV/XXXXXX-XXXXX", "")     // "PNOLV-XXXXXXXXXXX"
 
-  identitycode.Display("PNOLV-12345678901")                          // "123456-78901"
+  identitycode.Display("PNOLV-XXXXXXXXXXX")                          // "XXXXXX-XXXXX"
   identitycode.Key(someValueOfUnknownProvenance)                     // the value to compare by
   ```
 

@@ -55,7 +55,7 @@ func TestADelegatedExchangeRefusalIsReadableToo(t *testing.T) {
 	defer srv.Close()
 
 	_, err := newTestClient(t, srv.URL).AcquireDelegatedToken(context.Background(),
-		"svc:target", "projects:log", "PNOLV-010180-15097", "the-persons-token")
+		"svc:target", "projects:log", "PNOLV-"+strings.Repeat("1", 6)+"-"+strings.Repeat("1", 5), "the-persons-token")
 
 	var refused *Error
 	qt.Assert(t, qt.IsTrue(errors.As(err, &refused)))
