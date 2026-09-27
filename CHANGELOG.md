@@ -4,6 +4,38 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.26.0
+
+### Added — `permissions`: the acts a service enforces, declared once and checked on every route
+
+A service that checks permissions on its routes kept three things in step by hand: the list it registers with
+the membership register, the checks its routes make, and a test that the two agree. This package holds all
+three, so a service writes only its list:
+
+```go
+var Permissions = permissions.MustNew("projects", "Project and workflow engine", []permissions.Permission{
+    {Feature: "task/comment", Act: "add", Description: "Comment on a task",
+        Class: permissions.Ordinary, Plane: permissions.Object,
+        Labels: map[string]string{"lv": "Komentēt uzdevumu"}},
+})
+
+gate := Permissions.Gate(recordRefusal)
+v1.Post("/tasks/{id}/comments", gate.OneOf(permissions.Levels("projects", "log", "write"), r.commentAdd,
+    Permissions.Declared("task/comment", "add")))
+```
+
+- `Declared` stops the service at load when a route checks an act the list does not declare.
+- The route gate passes one of the permissions or all of them, beside an optional level of the service's own
+  ladder, and records what each route accepts.
+- `Section()` and `Command()` render and print the list as the membership register's configuration section. Each
+  entry carries its `plane` (`tenant` or `object`), its `labels` per language and its `retired` mark, which the
+  register reads from the release that accepts them; an older register refuses a declaration carrying them.
+- A library's permissions join the service's under the service's key, covered by the same checks.
+- `permissionstest.Check` fails a build whose routes and list disagree in either direction.
+
+**Nothing existing moves.** It is a new package, and `github.com/spf13/cobra` becomes a direct requirement (it was
+already required, indirectly).
+
 ## v0.25.0
 
 ### Added — a service account that is a member of an organisation can name it when asking for a token

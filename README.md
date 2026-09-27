@@ -227,6 +227,70 @@ place with a natural person, an unrecognised type included, because the question
 asked in order to refuse. The list is the standard's, not this package's, so it
 already covers identity types this package does not yet recognise.
 
+### One list of what a service checks (`permissions`)
+
+A permission is one act on one feature of a service, such as removing a file
+somebody else attached to a task. It travels on a token as a scope,
+`<service>/<feature path>:<act>`, and a route checks it as an exact match, so
+holding one act implies no other and nesting a feature under another grants
+nothing. The service writes its permissions once; the same list is what the
+membership register learns and what every route checks:
+
+```go
+var Permissions = permissions.MustNew("projects", "Project and workflow engine", []permissions.Permission{
+    {Feature: "project", Act: "create", Description: "Register a project",
+        Class: permissions.Ordinary, Plane: permissions.Tenant,
+        Labels: map[string]string{"lv": "Reģistrēt projektu"}},
+    {Feature: "task/comment", Act: "add", Description: "Comment on a task",
+        Class: permissions.Ordinary, Plane: permissions.Object},
+    {Feature: "setup", Act: "import", Description: "Apply a configuration file",
+        Class: permissions.TenantConfiguration, Plane: permissions.Tenant},
+})
+
+var permCommentAdd = Permissions.Declared("task/comment", "add") // stops the service if undeclared
+
+gate := Permissions.Gate(func(ctx *azugo.Context, required string) { /* record the refusal */ })
+v1.Post("/tasks/{id}/comments", gate.OneOf(permissions.Levels("projects", "log", "write"), r.commentAdd, permCommentAdd))
+v1.Get("/config", gate.Member(permissions.Levels("projects", "read"), r.configGet))
+```
+
+- **`Declared`** answers the permission a route checks and panics when the list
+  does not declare it, so a check nobody can be given stops the service at load.
+- **The route gate** passes a caller holding one of the permissions (`OneOf`) or
+  all of them (`AllOf`), beside an optional coarser level — a rung of the
+  service's own role ladder, or any check the service writes as a `Level`; pass
+  `permissions.Level{}` for none. `Member` passes the level or any permission the
+  service declares. A refusal is `403`, after the callback has been told what would
+  have been enough. A handler that tells an act on the caller's own work from an
+  act on anybody's reads `perm.HeldBy(ctx.User())`.
+- **The register document**: `Section()` renders the list as the membership
+  register's configuration section, and `Command()` is a `permissions` command
+  that prints it, for a deployment to apply. The service makes no call to register
+  itself.
+- **Each permission says** its `Class` (whether it changes what others may do),
+  its `Plane` (granted to the whole `Tenant`, or on one `Object` the service
+  owns), its label per language (`Label(lang)` falls back to the description) and
+  whether it is `Retired` — kept for the roles that already hold it, never handed
+  out again. A permission is never removed from a list.
+- **A library contributes its own** permissions: `MustNew(key, name, own,
+  library.Permissions)` puts them under the service's key, and the library's
+  routes check them through the same Set, so the same start check covers them.
+
+The test kit holds the routes against the list, both ways:
+
+```go
+func TestPermissions(t *testing.T) {
+    r := register(testApp(t)) // the service's routes, through its Gate
+    permissionstest.Check(t, Permissions, r.gate)
+}
+```
+
+It fails when a declared permission is checked by no route (a retired one aside),
+when a route checks one the list lacks, when a check naming an undeclared act does
+not stop the service, when an act on your own work (`editOwn`) has no act on
+anybody's (`edit`) beside it, and when the register document carries a property the
+register would refuse.
+
 ## Packages
 
 ```
@@ -237,6 +301,7 @@ dpop/         RFC 9449 proof generation & verification, JWK thumbprint
 identitycode/ One spelling of an identity code — store, compare, show
 jwks/         Caching JWKS client (TTL + unknown-kid refresh)
 nonce/        Stateless HMAC server nonce (DPoP-Nonce)
+permissions/  One list of the acts a service enforces: declare, check on routes, register, test
 replay/       jti replay cache — memory (default) or redis
 ```
 
