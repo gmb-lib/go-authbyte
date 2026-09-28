@@ -72,6 +72,13 @@ type Permission struct {
 	// declared, and keeps working for every role that already holds it, but it
 	// cannot be given to anybody again. A permission is never removed from a list.
 	Retired bool `json:"retired,omitempty"`
+	// Seeds names the roles the membership register creates with every new
+	// tenant that hold this permission, such as "worker" and "manager", so a
+	// tenant starts with roles that work before anybody makes one. Only a
+	// permission on the object plane, and never one that changes the tenant's
+	// setup, is seeded. The tenant may change or delete a seeded role like any
+	// other.
+	Seeds []string `json:"seeds,omitempty"`
 }
 
 // Name is the permission as it travels under the given service key:
@@ -182,6 +189,19 @@ func check(service string, p Permission) error {
 	case p.Plane != Tenant && p.Plane != Object:
 		return fmt.Errorf("permissions: %s: plane %q is not tenant or object", name, p.Plane)
 	}
+	if len(p.Seeds) > 0 && (p.Plane != Object || p.Class != Ordinary) {
+		return fmt.Errorf("permissions: %s: only an ordinary permission on the object plane is given to a seeded role", name)
+	}
+	seen := map[string]bool{}
+	for _, seed := range p.Seeds {
+		if len(seed) > maxAct || !actShape.MatchString(seed) {
+			return fmt.Errorf("permissions: %s: seed %q must be one lower-camel word", name, seed)
+		}
+		if seen[seed] {
+			return fmt.Errorf("permissions: %s: seed %q is named twice", name, seed)
+		}
+		seen[seed] = true
+	}
 	for lang, label := range p.Labels {
 		if !languageShape.MatchString(lang) {
 			return fmt.Errorf("permissions: %s: %q is not a language tag such as \"lv\"", name, lang)
@@ -195,6 +215,10 @@ func check(service string, p Permission) error {
 }
 
 func clone(p Permission) Permission {
+	p.Seeds = append([]string(nil), p.Seeds...)
+	if len(p.Seeds) == 0 {
+		p.Seeds = nil
+	}
 	if p.Labels != nil {
 		labels := make(map[string]string, len(p.Labels))
 		for k, v := range p.Labels {

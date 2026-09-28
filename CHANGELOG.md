@@ -16,6 +16,20 @@ confirmed and no longer, and reports how many times the service placed each role
 A role the register created with the tenant carries a `Seed` ("manager") that never changes, so a service picks a
 default role by seed and never by its name.
 
+### Added — `permissions`: the roles a new tenant starts with
+
+A permission may now name the roles the membership register creates with every new tenant that hold it, so a tenant
+opened today has working roles before anybody makes one:
+
+```go
+{Feature: "task", Act: "create", Description: "Add a task",
+    Class: permissions.Ordinary, Plane: permissions.Object, Seeds: []string{"worker", "manager"}},
+```
+
+Only an ordinary permission on the object plane may carry seeds; anything else stops the service at load. The
+register document carries them as `seeds`, which a register must accept before a service's section that uses them
+is applied to it.
+
 ```go
 reg, _ := placement.NewRegister(authClient, "http://membership:8080", "membership", "projects")
 keeper, _ := placement.New(reg, store, placement.Config{})

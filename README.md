@@ -272,6 +272,10 @@ v1.Get("/config", gate.Member(permissions.Levels("projects", "read"), r.configGe
   owns), its label per language (`Label(lang)` falls back to the description) and
   whether it is `Retired` — kept for the roles that already hold it, never handed
   out again. A permission is never removed from a list.
+- **Seeds**: an ordinary permission on the object plane may name the roles the
+  register creates with every new tenant that hold it (`Seeds: []string{"worker",
+  "manager"}`), so a tenant starts with working roles; the tenant changes or
+  deletes them like any other.
 - **A library contributes its own** permissions: `MustNew(key, name, own,
   library.Permissions)` puts them under the service's key, and the library's
   routes check them through the same Set, so the same start check covers them.
