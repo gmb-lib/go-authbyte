@@ -1,6 +1,7 @@
 package permissions
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -45,6 +46,10 @@ func TestNewRefusesWhatTheRegisterRefuses(t *testing.T) {
 		{"a label with surrounding space", with(func(p *Permission) { p.Labels = map[string]string{"lv": "Skatīt "} }), "label"},
 		{"a label too long", with(func(p *Permission) { p.Labels = map[string]string{"lv": strings.Repeat("a", 257)} }), "label"},
 		{"a permission declared twice", []Permission{valid("task", "view"), valid("task", "view")}, "declared twice"},
+		{"a seed on a tenant permission", with(func(p *Permission) { p.Plane = Tenant; p.Seeds = []string{"worker"} }), "seeded role"},
+		{"a seed on a setup permission", with(func(p *Permission) { p.Class = TenantConfiguration; p.Seeds = []string{"manager"} }), "seeded role"},
+		{"a seed that is not one word", with(func(p *Permission) { p.Seeds = []string{"site manager"} }), "seed"},
+		{"a seed named twice", with(func(p *Permission) { p.Seeds = []string{"worker", "worker"} }), "named twice"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := New("projects", "Projects", tc.list)
@@ -199,4 +204,34 @@ func TestListAndLookupAnswerCopies(t *testing.T) {
 	qt.Check(t, qt.Equals(again.Labels["lv"], "Skatīt"))
 	_, ok = s.Lookup("task", "edit")
 	qt.Check(t, qt.IsFalse(ok))
+}
+
+// The roles a new tenant starts with travel with the permission, into the
+// register document, and the Set keeps its own copy of them.
+func TestSeedsTravelWithThePermission(t *testing.T) {
+	p := valid("task", "view")
+	p.Seeds = []string{"worker", "manager"}
+	own := []Permission{p}
+	s := MustNew("projects", "Projects", own)
+
+	own[0].Seeds[0] = "changed by the caller"
+	got, _ := s.Lookup("task", "view")
+	qt.Check(t, qt.DeepEquals(got.Seeds, []string{"worker", "manager"}))
+
+	seedsIn := func(s *Set) []any {
+		t.Helper()
+		section, err := s.Section()
+		qt.Assert(t, qt.IsNil(err))
+		var doc struct {
+			Services []struct {
+				Permissions []map[string]any `json:"permissions"`
+			} `json:"services"`
+		}
+		qt.Assert(t, qt.IsNil(json.Unmarshal(section, &doc)))
+		seeds, _ := doc.Services[0].Permissions[0]["seeds"].([]any)
+
+		return seeds
+	}
+	qt.Check(t, qt.DeepEquals(seedsIn(s), []any{"worker", "manager"}))
+	qt.Check(t, qt.HasLen(seedsIn(MustNew("projects", "Projects", []Permission{valid("task", "view")})), 0))
 }

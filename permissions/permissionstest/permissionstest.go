@@ -106,7 +106,7 @@ func OwnBesideAny(t testing.TB, set *permissions.Set) {
 // other rather than dropping it, so the document must carry no more.
 var (
 	required = []string{"feature", "act", "description", "class", "plane"}
-	optional = []string{"labels", "retired"}
+	optional = []string{"labels", "retired", "seeds"}
 )
 
 // SectionIsTheRegisterDocument fails unless the Set renders as one service under
