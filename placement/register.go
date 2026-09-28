@@ -73,6 +73,7 @@ func NewRegister(do Doer, baseURL, audience string, groups ...string) (*Register
 type definitionsBody struct {
 	Roles []struct {
 		ID          string   `json:"id"`
+		Seed        string   `json:"seed"`
 		Name        string   `json:"name"`
 		Description string   `json:"description"`
 		Permissions []string `json:"permissions"`
@@ -117,6 +118,7 @@ func (r *Register) Definitions(ctx context.Context, tenant, version string) (Def
 		}
 		d.Roles = append(d.Roles, Role{
 			ID:          role.ID,
+			Seed:        role.Seed,
 			Name:        role.Name,
 			Description: role.Description,
 			Keys:        r.own(role.Permissions),

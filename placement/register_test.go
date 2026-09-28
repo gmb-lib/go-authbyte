@@ -65,8 +65,9 @@ func TestDefinitionsKeepOnlyThisServicesPermissions(t *testing.T) {
 	d := &fakeDoer{res: &authclient.BackgroundResponse{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Etag": {`"abc"`}},
-		Body: []byte(`{"tenantId":"t/1","roles":[{"id":"r1","name":"Manager","description":"Everything",` +
-			`"permissions":["workforce/person:view","projects/task:edit","projects/project:view","projects/task:edit"]}]}`),
+		Body: []byte(`{"tenantId":"t/1","roles":[{"id":"r1","seed":"manager","name":"Manager","description":"Everything",` +
+			`"permissions":["workforce/person:view","projects/task:edit","projects/project:view","projects/task:edit"]},` +
+			`{"id":"r2","name":"Storekeeper","description":"","permissions":["assets/asset:view"]}]}`),
 	}}
 
 	got, changed, err := register(t, d).Definitions(context.Background(), "t/1", "")
@@ -74,8 +75,12 @@ func TestDefinitionsKeepOnlyThisServicesPermissions(t *testing.T) {
 	qt.Assert(t, qt.IsNil(err))
 	qt.Check(t, qt.IsTrue(changed))
 	qt.Check(t, qt.DeepEquals(got, Definitions{Version: `"abc"`, Roles: []Role{{
-		ID: "r1", Name: "Manager", Description: "Everything",
+		ID: "r1", Seed: "manager", Name: "Manager", Description: "Everything",
 		Keys: []string{"projects/project:view", "projects/task:edit"},
+	}, {
+		// A role carrying nothing this service checks is still copied, holding no keys:
+		// a placement of it must grant nothing rather than be refused.
+		ID: "r2", Name: "Storekeeper", Keys: []string{},
 	}}}))
 	qt.Check(t, qt.Equals(d.url, "http://membership:8080/api/v1/tenants/t%2F1/role-definitions"))
 	qt.Check(t, qt.Equals(d.method, http.MethodGet))

@@ -13,6 +13,8 @@ what each role carries there without asking the membership register on every req
 it asks the register every few seconds with the version it holds (a `304` while nothing changed), hands a changed
 answer to the service's store to replace in one transaction, trusts a copy for one window after it was last
 confirmed and no longer, and reports how many times the service placed each role so a role in use is never deleted.
+A role the register created with the tenant carries a `Seed` ("manager") that never changes, so a service picks a
+default role by seed and never by its name.
 
 ```go
 reg, _ := placement.NewRegister(authClient, "http://membership:8080", "membership", "projects")

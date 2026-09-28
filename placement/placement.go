@@ -54,8 +54,15 @@ const (
 // Role is one of a tenant's roles as a service copies it: its keys are only the
 // permissions of the scope groups that service checks, each spelled as it
 // travels (`<group>/<feature>:<act>`).
+//
+// Seed names a role the register created with the tenant, such as "manager",
+// and is empty for a role the tenant made. The tenant may rename such a role or
+// change what it carries; its seed never changes, so a service that must pick a
+// default role — the one a new object's creator receives — picks it by seed and
+// never by name.
 type Role struct {
 	ID          string   `json:"id"`
+	Seed        string   `json:"seed,omitempty"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Keys        []string `json:"keys"`
