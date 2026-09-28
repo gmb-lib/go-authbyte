@@ -4,6 +4,26 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.27.0
+
+### Added — `placement`: a service's copy of a tenant's roles, for roles it places on its own objects
+
+A service that lets a tenant put a person on one of its own objects with one of the tenant's roles needs to know
+what each role carries there without asking the membership register on every request. This package keeps that copy:
+it asks the register every few seconds with the version it holds (a `304` while nothing changed), hands a changed
+answer to the service's store to replace in one transaction, trusts a copy for one window after it was last
+confirmed and no longer, and reports how many times the service placed each role so a role in use is never deleted.
+
+```go
+reg, _ := placement.NewRegister(authClient, "http://membership:8080", "membership", "projects")
+keeper, _ := placement.New(reg, store, placement.Config{})
+go keeper.Run(ctx)
+```
+
+Nothing existing changed. A service adopting it implements `placement.Store` over its own data and passes
+`keeper.TrustedSince()` to wherever it checks a placement; its client needs `membership:definitions` and
+`membership:placements` and a membership in each tenant it serves.
+
 ## v0.26.0
 
 ### Added — `permissions`: the acts a service enforces, declared once and checked on every route

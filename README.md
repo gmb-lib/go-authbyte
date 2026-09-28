@@ -291,6 +291,48 @@ not stop the service, when an act on your own work (`editOwn`) has no act on
 anybody's (`edit`) beside it, and when the register document carries a property the
 register would refuse.
 
+### A copy of a tenant's roles, for roles placed on your own objects (`placement`)
+
+A service that owns objects — a project, a register — can let a tenant put a
+person on one of them with one of the tenant's roles. What the person may do there
+is what the role carries in that service, and a check on every request should not
+ask the membership register every time. So the service keeps a copy of the roles
+beside its placements, and this package keeps the copy current and honest:
+
+```go
+reg, _ := placement.NewRegister(authClient, "http://membership:8080", "membership", "projects")
+keeper, _ := placement.New(reg, myStore, placement.Config{}) // 10 s poll, 15 min trust window
+go keeper.Run(ctx)
+
+// On a request from a tenant this service has never read the roles of:
+keeper.Wake(tenant)
+
+// Wherever a placement is checked, a copy confirmed before this grants nothing:
+since := keeper.TrustedSince()
+
+// On the readiness check:
+if err := keeper.Ready(); err != nil { /* degraded: placed keys grant nothing */ }
+```
+
+- **The poll** sends the version the service holds; while nothing changed the
+  register answers `304` with no body, so asking every few seconds costs almost
+  nothing. A changed answer goes to the service's `Store.Replace`, which replaces
+  the copy **and the keys beside every placement of a changed role in one
+  transaction**.
+- **The trust window** is how long a confirmed copy counts. A role taken back in
+  the register stops working here within the window even when the register cannot
+  be reached; `Ready` names the tenants whose copy is past it.
+- **The count**: after a cycle in which they changed, the service's placements per
+  role go to the register, which then refuses to delete a role somebody is still
+  placed in. An id it no longer knows comes back as an error for that tenant.
+- **Only the service's own groups are copied**: `NewRegister(…, "projects")` keeps
+  `projects/…` permissions and drops the rest. `Keys.Holds(perm)` checks a
+  placement's keys with the same exact match the route gate uses.
+- **The copy lives with the service's data**, behind the `Store` interface — five
+  methods: the tenants it holds, a copy's version, replace, confirm, and counts.
+  The register is reached as the service itself, a member of each tenant, holding
+  `membership:definitions` and `membership:placements`.
+
 ## Packages
 
 ```
@@ -302,6 +344,7 @@ identitycode/ One spelling of an identity code — store, compare, show
 jwks/         Caching JWKS client (TTL + unknown-kid refresh)
 nonce/        Stateless HMAC server nonce (DPoP-Nonce)
 permissions/  One list of the acts a service enforces: declare, check on routes, register, test
+placement/    A service's copy of a tenant's roles, for roles placed on its own objects
 replay/       jti replay cache — memory (default) or redis
 ```
 
