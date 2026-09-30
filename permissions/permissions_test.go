@@ -50,6 +50,8 @@ func TestNewRefusesWhatTheRegisterRefuses(t *testing.T) {
 		{"a seed on a setup permission", with(func(p *Permission) { p.Class = TenantConfiguration; p.Seeds = []string{"manager"} }), "seeded role"},
 		{"a seed that is not one word", with(func(p *Permission) { p.Seeds = []string{"site manager"} }), "seed"},
 		{"a seed named twice", with(func(p *Permission) { p.Seeds = []string{"worker", "worker"} }), "named twice"},
+		{"a per-field family on the tenant plane", with(func(p *Permission) { p.Class = PerField; p.Plane = Tenant }), "object plane"},
+		{"a seed on a per-field family", with(func(p *Permission) { p.Class = PerField; p.Seeds = []string{"manager"} }), "seeded role"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := New("projects", "Projects", tc.list)
@@ -185,6 +187,31 @@ func TestSectionIsTheRegisterDocument(t *testing.T) {
     }
   ]
 }`))
+}
+
+// A per-field family is declared once, on the object plane, and travels to the
+// register as its own class. On a token it is the bare family, the
+// administrators'.
+func TestAPerFieldFamilyIsDeclaredOnceOnTheObjectPlane(t *testing.T) {
+	family := Permission{Feature: "task", Act: "viewField", Description: "See the value of a restricted field on a task",
+		Class: PerField, Plane: Object}
+	s, err := New("projects", "Projects", []Permission{valid("task", "view"), family})
+	qt.Assert(t, qt.IsNil(err))
+
+	raw, err := s.Section()
+	qt.Assert(t, qt.IsNil(err))
+	var doc struct {
+		Services []struct {
+			Permissions []map[string]any `json:"permissions"`
+		} `json:"services"`
+	}
+	qt.Assert(t, qt.IsNil(json.Unmarshal(raw, &doc)))
+	qt.Check(t, qt.Equals(doc.Services[0].Permissions[1]["class"], any("perField")))
+	qt.Check(t, qt.Equals(doc.Services[0].Permissions[1]["plane"], any("object")))
+
+	viewField := s.Declared("task", "viewField")
+	qt.Check(t, qt.Equals(viewField.String(), "projects/task:viewField"))
+	qt.Check(t, qt.IsTrue(viewField.HeldBy(scopes{"projects/task:viewField": true})))
 }
 
 // What the Set answers is its own copy: changing it changes nothing declared.

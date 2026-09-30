@@ -355,3 +355,15 @@ func TestKeysHoldOnlyTheExactPermission(t *testing.T) {
 	qt.Check(t, qt.IsTrue(keys.Holds(set.Declared("task", "editOwn"))))
 	qt.Check(t, qt.IsFalse(keys.Holds(set.Declared("task", "edit"))))
 }
+
+// One field's right in a placement's keys is not the family it belongs to: the
+// bare family means every field of the kind, and no role holds it.
+func TestKeysHoldingAFieldsRightDoNotHoldItsFamily(t *testing.T) {
+	set := permissions.MustNew("projects", "Test", []permissions.Permission{
+		{Feature: "task", Act: "viewField", Description: "See the value of a restricted field on a task",
+			Class: permissions.PerField, Plane: permissions.Object},
+	})
+	keys := Keys{"projects/task:viewField@rate.2"}
+
+	qt.Check(t, qt.IsFalse(keys.Holds(set.Declared("task", "viewField"))))
+}

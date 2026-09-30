@@ -267,7 +267,8 @@ v1.Get("/config", gate.Member(permissions.Levels("projects", "read"), r.configGe
   register's configuration section, and `Command()` is a `permissions` command
   that prints it, for a deployment to apply. The service makes no call to register
   itself.
-- **Each permission says** its `Class` (whether it changes what others may do),
+- **Each permission says** its `Class` (whether it changes what others may do, or
+  is a family of rights, one per field),
   its `Plane` (granted to the whole `Tenant`, or on one `Object` the service
   owns), its label per language (`Label(lang)` falls back to the description) and
   whether it is `Retired` — kept for the roles that already hold it, never handed
@@ -276,6 +277,15 @@ v1.Get("/config", gate.Member(permissions.Levels("projects", "read"), r.configGe
   register creates with every new tenant that hold it (`Seeds: []string{"worker",
   "manager"}`), so a tenant starts with working roles; the tenant changes or
   deletes them like any other.
+- **A family of rights, one per field** (`Class: permissions.PerField`): a
+  service whose tenants add their own fields, and restrict who sees a field's
+  values, declares one family per kind of field (`task:viewField`) on the object
+  plane. A field's right is the family, `@`, the field's key and a generation the
+  field counts up each time it is restricted — `projects/task:viewField@rate.2` —
+  held only as a tick on a role placed on the service's objects, so it arrives in
+  a placement's keys and never on a token. The bare family is the
+  administrators', on their token, and means every field of the kind. The service
+  checks it on each value it answers, so the test kit asks no route to accept it.
 - **A library contributes its own** permissions: `MustNew(key, name, own,
   library.Permissions)` puts them under the service's key, and the library's
   routes check them through the same Set, so the same start check covers them.
@@ -289,7 +299,8 @@ func TestPermissions(t *testing.T) {
 }
 ```
 
-It fails when a declared permission is checked by no route (a retired one aside),
+It fails when a declared permission is checked by no route (a retired one or a
+per-field family aside),
 when a route checks one the list lacks, when a check naming an undeclared act does
 not stop the service, when an act on your own work (`editOwn`) has no act on
 anybody's (`edit`) beside it, and when the register document carries a property the
