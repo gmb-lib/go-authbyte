@@ -16,7 +16,9 @@ import (
 // routes of their own):
 //
 //   - declared is checked: every permission that is not retired is accepted by
-//     some route — a permission nobody checks is a promise on a screen nobody keeps;
+//     some route — a permission nobody checks is a promise on a screen nobody keeps.
+//     A per-field family is the exception: it is checked on each value the
+//     service answers, not on a route;
 //   - checked is declared: every permission a route accepts belongs to this Set;
 //   - a check naming an act the Set does not declare stops the service;
 //   - an act on your own work ("editOwn") is declared beside the act on anybody's
@@ -32,8 +34,9 @@ func Check(t testing.TB, set *permissions.Set, gates ...*permissions.Gate) {
 }
 
 // DeclaredIsChecked fails unless the permissions the routes accept are exactly
-// the Set's, retired ones aside: a retired permission may still be accepted,
-// since it keeps working for the roles that hold it, and need not be.
+// the Set's, retired ones and per-field families aside: either may still be
+// accepted and need not be. A retired permission keeps working for the roles that
+// hold it; a per-field family is checked on each value the service answers.
 func DeclaredIsChecked(t testing.TB, set *permissions.Set, gates ...*permissions.Gate) {
 	t.Helper()
 	accepted := map[string]bool{}
@@ -46,7 +49,7 @@ func DeclaredIsChecked(t testing.TB, set *permissions.Set, gates ...*permissions
 	for _, p := range set.List() {
 		name := p.Name(set.Service())
 		declared[name] = true
-		if !p.Retired && !accepted[name] {
+		if !p.Retired && p.Class != permissions.PerField && !accepted[name] {
 			t.Errorf("%s is declared but no route accepts it", name)
 		}
 	}

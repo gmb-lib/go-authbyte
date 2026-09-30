@@ -25,8 +25,9 @@ import (
 	"strings"
 )
 
-// Class says whether holding a permission lets its holder change what others may
-// do. The membership register uses it to decide who may hand a permission out,
+// Class says what kind of right a permission is: whether holding it lets its
+// holder change what others may do, or whether it is a family of rights, one per
+// field. The membership register uses it to decide who may hand a permission out,
 // and it never changes once declared.
 type Class string
 
@@ -38,6 +39,20 @@ const (
 	TenantConfiguration Class = "tenantConfiguration"
 	// RoleManagement is an act that changes who holds which role.
 	RoleManagement Class = "roleManagement"
+	// PerField is a family of rights, one for each field of one kind that a
+	// tenant restricts, such as seeing the value of a restricted field on a task.
+	// The service declares the family once; the fields are the tenant's own, so
+	// which rights of the family exist is the tenant's data too. A field's right
+	// is the family, "@", the field's key and a generation the field counts up
+	// each time it is restricted — `projects/task:viewField@rate.2` — so a right
+	// left over from an earlier restriction names nothing that exists.
+	//
+	// A field's right is held only as a tick on a role placed on one of the
+	// service's objects, and never travels on a token. The bare family is the
+	// administrators' alone, on their token, and means every field of the kind;
+	// no role can be given it. The service checks it on each value it answers,
+	// not on a route, so it is declared on the object plane and seeds no role.
+	PerField Class = "perField"
 )
 
 // Plane says where a permission may be granted, and it never changes once
@@ -184,10 +199,13 @@ func check(service string, p Permission) error {
 		return fmt.Errorf("permissions: %s: the act must be one lower-camel word", name)
 	case strings.TrimSpace(p.Description) == "" || strings.TrimSpace(p.Description) != p.Description:
 		return fmt.Errorf("permissions: %s needs a description with no surrounding space", name)
-	case p.Class != Ordinary && p.Class != TenantConfiguration && p.Class != RoleManagement:
-		return fmt.Errorf("permissions: %s: class %q is not ordinary, tenantConfiguration or roleManagement", name, p.Class)
+	case p.Class != Ordinary && p.Class != TenantConfiguration && p.Class != RoleManagement && p.Class != PerField:
+		return fmt.Errorf("permissions: %s: class %q is not ordinary, tenantConfiguration, roleManagement or perField",
+			name, p.Class)
 	case p.Plane != Tenant && p.Plane != Object:
 		return fmt.Errorf("permissions: %s: plane %q is not tenant or object", name, p.Plane)
+	case p.Class == PerField && p.Plane != Object:
+		return fmt.Errorf("permissions: %s: a per-field family is held where a role is placed, on the object plane", name)
 	}
 	if len(p.Seeds) > 0 && (p.Plane != Object || p.Class != Ordinary) {
 		return fmt.Errorf("permissions: %s: only an ordinary permission on the object plane is given to a seeded role", name)

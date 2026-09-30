@@ -4,6 +4,29 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.28.0
+
+### Added — `permissions`: a family of rights, one per field
+
+A service whose tenants add fields of their own, and choose which roles see a field's values, now declares one
+family per kind of field instead of one right per field it cannot know in advance:
+
+```go
+{Feature: "task", Act: "viewField", Description: "See the value of a restricted field on a task",
+    Class: permissions.PerField, Plane: permissions.Object},
+```
+
+A field's right is the family, `@`, the field's key and a generation the field counts up each time it is
+restricted: `projects/task:viewField@rate.2`. It is held only as a tick on a role, reaches the service through
+`placement` like any other key (a placement's `Keys` carry it as it travels), and never rides a token. The bare
+family is the administrators', on their token, and means every field of the kind; a placement holding one field's
+right does not hold the family. A per-field family must be on the object plane and seeds no role, or the service
+stops at load.
+
+The test kit's *declared is checked* rule skips a per-field family, since the service checks it on each value it
+answers rather than on a route. Nothing existing changed. A membership register must accept the class `perField`
+before a service's section that declares one is applied to it.
+
 ## v0.27.0
 
 ### Added — `placement`: a service's copy of a tenant's roles, for roles it places on its own objects

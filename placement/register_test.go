@@ -90,6 +90,22 @@ func TestDefinitionsKeepOnlyThisServicesPermissions(t *testing.T) {
 	qt.Check(t, qt.Equals(d.header.Get("If-None-Match"), ""))
 }
 
+// A field's right, a per-field family followed by "@", the field's key and its
+// generation, is copied as it travels, under the service's own group only.
+func TestDefinitionsKeepAFieldsRightAsItTravels(t *testing.T) {
+	d := &fakeDoer{res: &authclient.BackgroundResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Etag": {`"v2"`}},
+		Body: []byte(`{"tenantId":"t1","roles":[{"id":"r1","name":"Lead","description":"",` +
+			`"permissions":["projects/task:viewField@rate.2","workforce/person:viewField@grade.1","projects/task:view"]}]}`),
+	}}
+
+	got, _, err := register(t, d).Definitions(context.Background(), "t1", "")
+
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.DeepEquals(got.Roles[0].Keys, []string{"projects/task:view", "projects/task:viewField@rate.2"}))
+}
+
 func TestDefinitionsSendTheVersionHeldAndReadA304AsUnchanged(t *testing.T) {
 	d := &fakeDoer{res: &authclient.BackgroundResponse{StatusCode: http.StatusNotModified}}
 
