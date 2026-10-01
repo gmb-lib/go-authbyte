@@ -66,6 +66,13 @@ const (
 	// Object is a permission granted on one object the service owns, such as
 	// commenting on the tasks of one project.
 	Object Plane = "object"
+	// Chart is a permission granted to a position in the tenant's chart of
+	// authority and held relative to the tree: it lifts what the people below the
+	// holder already see, such as the projects of everyone who reports to them. It
+	// is never ticked on a role or a user type and never seeds a role. It is
+	// ordinary in class, and it is checked in the service's reads, where a viewer's
+	// reach is added to their own sight, rather than on a route.
+	Chart Plane = "chart"
 )
 
 // Permission is one act a service enforces on one of its features.
@@ -202,10 +209,12 @@ func check(service string, p Permission) error {
 	case p.Class != Ordinary && p.Class != TenantConfiguration && p.Class != RoleManagement && p.Class != PerField:
 		return fmt.Errorf("permissions: %s: class %q is not ordinary, tenantConfiguration, roleManagement or perField",
 			name, p.Class)
-	case p.Plane != Tenant && p.Plane != Object:
-		return fmt.Errorf("permissions: %s: plane %q is not tenant or object", name, p.Plane)
+	case p.Plane != Tenant && p.Plane != Object && p.Plane != Chart:
+		return fmt.Errorf("permissions: %s: plane %q is not tenant, object or chart", name, p.Plane)
 	case p.Class == PerField && p.Plane != Object:
 		return fmt.Errorf("permissions: %s: a per-field family is held where a role is placed, on the object plane", name)
+	case p.Plane == Chart && p.Class != Ordinary:
+		return fmt.Errorf("permissions: %s: a permission held by a position in the chart is ordinary in class", name)
 	}
 	if len(p.Seeds) > 0 && (p.Plane != Object || p.Class != Ordinary) {
 		return fmt.Errorf("permissions: %s: only an ordinary permission on the object plane is given to a seeded role", name)

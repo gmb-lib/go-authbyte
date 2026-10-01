@@ -52,6 +52,9 @@ func TestNewRefusesWhatTheRegisterRefuses(t *testing.T) {
 		{"a seed named twice", with(func(p *Permission) { p.Seeds = []string{"worker", "worker"} }), "named twice"},
 		{"a per-field family on the tenant plane", with(func(p *Permission) { p.Class = PerField; p.Plane = Tenant }), "object plane"},
 		{"a seed on a per-field family", with(func(p *Permission) { p.Class = PerField; p.Seeds = []string{"manager"} }), "seeded role"},
+		{"a seed on a chart permission", with(func(p *Permission) { p.Plane = Chart; p.Seeds = []string{"manager"} }), "seeded role"},
+		{"a setup permission on the chart plane", with(func(p *Permission) { p.Plane = Chart; p.Class = TenantConfiguration }), "ordinary in class"},
+		{"a per-field family on the chart plane", with(func(p *Permission) { p.Plane = Chart; p.Class = PerField }), "object plane"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := New("projects", "Projects", tc.list)
@@ -212,6 +215,28 @@ func TestAPerFieldFamilyIsDeclaredOnceOnTheObjectPlane(t *testing.T) {
 	viewField := s.Declared("task", "viewField")
 	qt.Check(t, qt.Equals(viewField.String(), "projects/task:viewField"))
 	qt.Check(t, qt.IsTrue(viewField.HeldBy(scopes{"projects/task:viewField": true})))
+}
+
+// A permission held by a position in a chart is declared on the chart plane and
+// travels to the register as such, under a key of its own.
+func TestAChartPermissionIsDeclaredOnTheChartPlane(t *testing.T) {
+	box := Permission{Feature: "project", Act: "view", Description: "See the projects of the people below you",
+		Class: Ordinary, Plane: Chart}
+	s, err := New("authority", "Chart of authority", []Permission{box})
+	qt.Assert(t, qt.IsNil(err))
+
+	raw, err := s.Section()
+	qt.Assert(t, qt.IsNil(err))
+	var doc struct {
+		Services []struct {
+			Key         string           `json:"key"`
+			Permissions []map[string]any `json:"permissions"`
+		} `json:"services"`
+	}
+	qt.Assert(t, qt.IsNil(json.Unmarshal(raw, &doc)))
+	qt.Check(t, qt.Equals(doc.Services[0].Key, "authority"))
+	qt.Check(t, qt.Equals(doc.Services[0].Permissions[0]["plane"], any("chart")))
+	qt.Check(t, qt.IsTrue(s.Declared("project", "view").HeldBy(scopes{"authority/project:view": true})))
 }
 
 // What the Set answers is its own copy: changing it changes nothing declared.

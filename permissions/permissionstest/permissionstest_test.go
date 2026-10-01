@@ -67,15 +67,17 @@ func TestCheckPassesAServiceThatKeepsEveryRule(t *testing.T) {
 	qt.Check(t, qt.HasLen(report(t, func(tb testing.TB) { Check(tb, s, g) }), 0))
 }
 
-// A declared permission no route accepts fails, and a retired one or a per-field
-// family does not.
+// A declared permission no route accepts fails, and a retired one, a per-field
+// family or a chart permission does not.
 func TestDeclaredButUncheckedFails(t *testing.T) {
 	retired := perm("task", "archive")
 	retired.Retired = true
 	family := perm("task", "viewField")
 	family.Class = permissions.PerField
+	reach := perm("task", "see")
+	reach.Plane = permissions.Chart
 	s := permissions.MustNew("projects", "Projects", []permissions.Permission{
-		perm("task", "view"), perm("task", "edit"), retired, family,
+		perm("task", "view"), perm("task", "edit"), retired, family, reach,
 	})
 	g := s.Gate(nil)
 	g.OneOf(permissions.Level{}, ok, s.Declared("task", "view"))

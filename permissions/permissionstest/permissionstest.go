@@ -34,9 +34,10 @@ func Check(t testing.TB, set *permissions.Set, gates ...*permissions.Gate) {
 }
 
 // DeclaredIsChecked fails unless the permissions the routes accept are exactly
-// the Set's, retired ones and per-field families aside: either may still be
-// accepted and need not be. A retired permission keeps working for the roles that
-// hold it; a per-field family is checked on each value the service answers.
+// the Set's, retired ones, per-field families and chart permissions aside: any may
+// still be accepted and need not be. A retired permission keeps working for the
+// roles that hold it; a per-field family is checked on each value the service
+// answers; a chart permission is read from the viewer's reach, not from a route.
 func DeclaredIsChecked(t testing.TB, set *permissions.Set, gates ...*permissions.Gate) {
 	t.Helper()
 	accepted := map[string]bool{}
@@ -49,7 +50,7 @@ func DeclaredIsChecked(t testing.TB, set *permissions.Set, gates ...*permissions
 	for _, p := range set.List() {
 		name := p.Name(set.Service())
 		declared[name] = true
-		if !p.Retired && p.Class != permissions.PerField && !accepted[name] {
+		if !p.Retired && p.Class != permissions.PerField && p.Plane != permissions.Chart && !accepted[name] {
 			t.Errorf("%s is declared but no route accepts it", name)
 		}
 	}

@@ -4,6 +4,26 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.29.0
+
+### Added — `permissions`: a third plane, `Chart`
+
+A permission held by a position in a tenant's chart of authority, relative to the tree, is declared with
+`Plane: permissions.Chart`. It lifts what the people below the holder already see; it is never ticked on a role
+or a user type and never seeds a role, so it must be ordinary in class and without seeds, or the service stops
+at load. The test kit's *declared is checked* rule skips it, since a service reads it from the viewer's reach
+and not on a route. Nothing existing changed. A membership register must accept the plane `chart` before a
+section that declares one is applied to it.
+
+### Added — `chart`: a service's copy of who is below whom
+
+A service that lets a person see what the people below them in the chart see keeps a copy of the tree as a list,
+and this package keeps it current and honest the way `placement` keeps the roles': the register is asked every few
+seconds with the version held (a `304` while nothing changed), a changed answer replaces the copy in one
+transaction the service's store makes atomic, and a copy is trusted for one window after it was last confirmed
+and no longer. A move in the chart is seen within one interval; a copy past the window lifts nothing, and `Ready`
+names the tenants it concerns. The register is reached as the service itself with the level `membership:chart`.
+
 ## v0.28.0
 
 ### Added — `permissions`: a family of rights, one per field
