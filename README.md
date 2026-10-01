@@ -269,8 +269,8 @@ v1.Get("/config", gate.Member(permissions.Levels("projects", "read"), r.configGe
   itself.
 - **Each permission says** its `Class` (whether it changes what others may do, or
   is a family of rights, one per field),
-  its `Plane` (granted to the whole `Tenant`, or on one `Object` the service
-  owns), its label per language (`Label(lang)` falls back to the description) and
+  its `Plane` (granted to the whole `Tenant`, on one `Object` the service
+  owns, or to a position in the tenant's `Chart` of authority), its label per language (`Label(lang)` falls back to the description) and
   whether it is `Retired` — kept for the roles that already hold it, never handed
   out again. A permission is never removed from a list.
 - **Seeds**: an ordinary permission on the object plane may name the roles the
@@ -348,11 +348,46 @@ if err := keeper.Ready(); err != nil { /* degraded: placed keys grant nothing */
   The register is reached as the service itself, a member of each tenant, holding
   `membership:definitions` and `membership:placements`.
 
+### A copy of a tenant's chart of authority (`chart`)
+
+A tenant may draw its own tree of positions and put its people in them, and a
+service may let a person see what the people below them see — the projects of
+everyone who reports to them — without joining any of them. The service reads that
+from a copy of the tree, kept the way the roles' copy is kept:
+
+```go
+reg, _ := chart.NewRegister(authClient, "http://membership:8080", "membership")
+keeper, _ := chart.New(reg, myStore, chart.Config{}) // 10 s poll, 15 min trust window
+go keeper.Run(ctx)
+
+keeper.Wake(tenant)          // a tenant this service has never read the chart of
+since := keeper.TrustedSince() // a copy confirmed before this lifts nothing
+if err := keeper.Ready(); err != nil { /* degraded: the chart lifts nothing */ }
+```
+
+- **The copy is a list**: for each person, everyone below them, all the way down,
+  as subject keys (`Chart.Below`). Nobody is below themselves, and a person with
+  nobody below has no entry.
+- **Same discipline as the roles' copy**: the poll sends the version held and a
+  `304` costs nothing, a changed answer replaces the copy in one `Store.Replace`,
+  and a copy is trusted for one window after it was last confirmed. A person moved
+  out of a position stops seeing through it within one interval, and when the
+  register cannot be reached, within the window.
+- **The store** has four methods: the tenants it holds, a copy's version, replace,
+  confirm. The register is reached as the service itself, holding
+  `membership:chart`; a tenant without a chart is answered as an empty one.
+- **The permissions that read the copy** are declared on the third plane,
+  `permissions.Chart`: held by a position, relative to the tree, ordinary in
+  class, never ticked on a role or a user type and never seeded. The test kit's
+  *declared is checked* rule skips them, since they are read from the viewer's
+  reach rather than checked on a route.
+
 ## Packages
 
 ```
 asclient/     Confidential authorization-code browser login (PKCE + per-session proof)
 authclient/   Configuration, Client, Azugo middleware, outbound calls
+chart/        A service's copy of who is below whom in a tenant's chart of authority
 claims/       Shared JWT claim model (user + service + delegated tokens; `act`)
 dpop/         RFC 9449 proof generation & verification, JWK thumbprint
 identitycode/ One spelling of an identity code — store, compare, show
