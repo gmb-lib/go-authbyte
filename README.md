@@ -343,6 +343,12 @@ if err := keeper.Ready(); err != nil { /* degraded: placed keys grant nothing */
 - **Only the service's own groups are copied**: `NewRegister(…, "projects")` keeps
   `projects/…` permissions and drops the rest. `Keys.Holds(perm)` checks a
   placement's keys with the same exact match the route gate uses.
+- **A role's names**: `Role.Name` is the name as the tenant entered it, and
+  `Role.Labels` its name in other languages (`{"en": "Worker"}`), so the service
+  can name a role to each reader in the reader's language and fall back to `Name`.
+  `Labels` is empty, never nil, when the role has no other names or the register
+  answers none; an answer whose names are not a language-to-name object is refused
+  like any answer that cannot be read, and the copy stays as it was.
 - **The copy lives with the service's data**, behind the `Store` interface — five
   methods: the tenants it holds, a copy's version, replace, confirm, and counts.
   The register is reached as the service itself, a member of each tenant, holding

@@ -4,6 +4,40 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.30.0
+
+A role copied by `placement` now carries its **names in other languages**, so a service can name a
+role to each reader in the reader's language. Nothing else changes; a service that does not read
+the new field behaves as before.
+
+### Added
+
+- **`placement.Role.Labels`** (`map[string]string`, JSON `labels`): the role's name in other
+  languages, keyed by language, as the membership register keeps them. `Name` stays the name as the
+  tenant entered it. The register's role definitions are read with it:
+
+  ```json
+  {"roles": [{"id": "r1", "seed": "worker", "name": "Strādnieks", "labels": {"en": "Worker"},
+              "description": "", "permissions": ["projects/task:view"]}]}
+  ```
+
+  gives `Role{ID: "r1", Seed: "worker", Name: "Strādnieks", Labels: map[string]string{"en": "Worker"}, …}`.
+
+### Changed
+
+- **`Labels` is empty, never nil**, when the register answers no names for a role — including a
+  register that predates them — so a store that writes the role as JSON writes `"labels": {}`, not
+  `null`.
+- **An answer whose `labels` is not a language-to-name object** (a string, a list, a name that is
+  not text) is refused like any answer that cannot be read: `Definitions` returns an error and the
+  keeper keeps the copy it holds.
+
+### For a service that keeps the copy
+
+- `Store.Replace` receives `Labels` on every role. To show a role's other names, keep them beside
+  the name in your copy; a store that ignores them keeps working as before.
+- A names-only change reaches the copy when the register's version for the tenant moves with it.
+
 ## v0.29.1
 
 A security and dependency release with two things to act on: **this library now needs Go 1.27.2**,

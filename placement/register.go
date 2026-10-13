@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -68,15 +69,17 @@ func NewRegister(do Doer, baseURL, audience string, groups ...string) (*Register
 	}, nil
 }
 
-// definitionsBody is the register's answer: every role of the tenant with every
-// permission it carries there.
+// definitionsBody is the register's answer: every role of the tenant with its
+// names and every permission it carries there. A register that predates names
+// in other languages answers no labels; the role then has none.
 type definitionsBody struct {
 	Roles []struct {
-		ID          string   `json:"id"`
-		Seed        string   `json:"seed"`
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Permissions []string `json:"permissions"`
+		ID          string            `json:"id"`
+		Seed        string            `json:"seed"`
+		Name        string            `json:"name"`
+		Labels      map[string]string `json:"labels"`
+		Description string            `json:"description"`
+		Permissions []string          `json:"permissions"`
 	} `json:"roles"`
 }
 
@@ -116,10 +119,15 @@ func (r *Register) Definitions(ctx context.Context, tenant, version string) (Def
 		if role.ID == "" {
 			return Definitions{}, false, errors.New("placement: the register answered a role with no id")
 		}
+		labels := maps.Clone(role.Labels)
+		if labels == nil {
+			labels = map[string]string{}
+		}
 		d.Roles = append(d.Roles, Role{
 			ID:          role.ID,
 			Seed:        role.Seed,
 			Name:        role.Name,
+			Labels:      labels,
 			Description: role.Description,
 			Keys:        r.own(role.Permissions),
 		})
