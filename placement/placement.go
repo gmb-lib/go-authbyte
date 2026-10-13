@@ -60,12 +60,19 @@ const (
 // change what it carries; its seed never changes, so a service that must pick a
 // default role — the one a new object's creator receives — picks it by seed and
 // never by name.
+//
+// Name is the name as the tenant entered it. Labels holds the role's name in
+// other languages, keyed by language ("en", "lv"), as the register keeps them,
+// so a service can name the role to each reader in the reader's language and
+// fall back to Name where the role has none. It is empty, never nil, when the
+// role has no other names.
 type Role struct {
-	ID          string   `json:"id"`
-	Seed        string   `json:"seed,omitempty"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Keys        []string `json:"keys"`
+	ID          string            `json:"id"`
+	Seed        string            `json:"seed,omitempty"`
+	Name        string            `json:"name"`
+	Labels      map[string]string `json:"labels"`
+	Description string            `json:"description"`
+	Keys        []string          `json:"keys"`
 }
 
 // Definitions is a tenant's roles and the version the register answered them at.

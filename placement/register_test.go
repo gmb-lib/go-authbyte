@@ -65,9 +65,10 @@ func TestDefinitionsKeepOnlyThisServicesPermissions(t *testing.T) {
 	d := &fakeDoer{res: &authclient.BackgroundResponse{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Etag": {`"abc"`}},
-		Body: []byte(`{"tenantId":"t/1","roles":[{"id":"r1","seed":"manager","name":"Manager","description":"Everything",` +
+		Body: []byte(`{"tenantId":"t/1","roles":[{"id":"r1","seed":"manager","name":"Manager","labels":{},` +
+			`"description":"Everything",` +
 			`"permissions":["workforce/person:view","projects/task:edit","projects/project:view","projects/task:edit"]},` +
-			`{"id":"r2","name":"Storekeeper","description":"","permissions":["assets/asset:view"]}]}`),
+			`{"id":"r2","name":"Storekeeper","labels":{},"description":"","permissions":["assets/asset:view"]}]}`),
 	}}
 
 	got, changed, err := register(t, d).Definitions(context.Background(), "t/1", "")
@@ -75,12 +76,12 @@ func TestDefinitionsKeepOnlyThisServicesPermissions(t *testing.T) {
 	qt.Assert(t, qt.IsNil(err))
 	qt.Check(t, qt.IsTrue(changed))
 	qt.Check(t, qt.DeepEquals(got, Definitions{Version: `"abc"`, Roles: []Role{{
-		ID: "r1", Seed: "manager", Name: "Manager", Description: "Everything",
+		ID: "r1", Seed: "manager", Name: "Manager", Labels: map[string]string{}, Description: "Everything",
 		Keys: []string{"projects/project:view", "projects/task:edit"},
 	}, {
 		// A role carrying nothing this service checks is still copied, holding no keys:
 		// a placement of it must grant nothing rather than be refused.
-		ID: "r2", Name: "Storekeeper", Keys: []string{},
+		ID: "r2", Name: "Storekeeper", Labels: map[string]string{}, Keys: []string{},
 	}}}))
 	qt.Check(t, qt.Equals(d.url, "http://membership:8080/api/v1/tenants/t%2F1/role-definitions"))
 	qt.Check(t, qt.Equals(d.method, http.MethodGet))
@@ -104,6 +105,63 @@ func TestDefinitionsKeepAFieldsRightAsItTravels(t *testing.T) {
 
 	qt.Assert(t, qt.IsNil(err))
 	qt.Check(t, qt.DeepEquals(got.Roles[0].Keys, []string{"projects/task:view", "projects/task:viewField@rate.2"}))
+}
+
+// A role's names in other languages are copied beside the name as entered, so
+// a service can name the role in each reader's language.
+func TestDefinitionsCopyARolesNamesInOtherLanguages(t *testing.T) {
+	d := &fakeDoer{res: &authclient.BackgroundResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Etag": {`"v3"`}},
+		Body: []byte(`{"tenantId":"t1","roles":[` +
+			`{"id":"r1","seed":"worker","name":"Strādnieks","labels":{"en":"Worker"},"description":"","permissions":[]},` +
+			`{"id":"r2","name":"Brigadier","labels":{"en":"Foreman","lv":"Brigadieris"},"description":"","permissions":[]}]}`),
+	}}
+
+	got, _, err := register(t, d).Definitions(context.Background(), "t1", "")
+
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.DeepEquals(got.Roles[0].Labels, map[string]string{"en": "Worker"}))
+	qt.Check(t, qt.DeepEquals(got.Roles[1].Labels, map[string]string{"en": "Foreman", "lv": "Brigadieris"}))
+	qt.Check(t, qt.Equals(got.Roles[0].Name, "Strādnieks"))
+}
+
+// A register that predates names in other languages answers none: the role is
+// copied with no other names, never with a nil map a service would write as null.
+func TestDefinitionsWithoutLabelsCopyNone(t *testing.T) {
+	d := &fakeDoer{res: &authclient.BackgroundResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Etag": {`"v1"`}},
+		Body:       []byte(`{"tenantId":"t1","roles":[{"id":"r1","name":"Lead","description":"","permissions":[]}]}`),
+	}}
+
+	got, _, err := register(t, d).Definitions(context.Background(), "t1", "")
+
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.IsNotNil(got.Roles[0].Labels))
+	qt.Check(t, qt.HasLen(got.Roles[0].Labels, 0))
+
+	b, err := json.Marshal(got.Roles[0])
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.StringContains(string(b), `"labels":{}`))
+}
+
+// Names that are not a language-to-name object refuse the whole answer, and the
+// copy the service holds stays as it was.
+func TestDefinitionsWithMalformedLabelsAreRefused(t *testing.T) {
+	for _, labels := range []string{`"Worker"`, `["Worker"]`, `{"en":1}`, `{"en":{"name":"Worker"}}`} {
+		d := &fakeDoer{res: &authclient.BackgroundResponse{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Etag": {`"v1"`}},
+			Body: []byte(`{"tenantId":"t1","roles":[{"id":"r1","name":"Lead","labels":` + labels +
+				`,"description":"","permissions":[]}]}`),
+		}}
+
+		_, changed, err := register(t, d).Definitions(context.Background(), "t1", "")
+
+		qt.Check(t, qt.ErrorMatches(err, `placement: read the roles: .*`), qt.Commentf("labels %s", labels))
+		qt.Check(t, qt.IsFalse(changed))
+	}
 }
 
 func TestDefinitionsSendTheVersionHeldAndReadA304AsUnchanged(t *testing.T) {
