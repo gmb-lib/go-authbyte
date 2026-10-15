@@ -48,6 +48,41 @@ type Actor struct {
 	Act *Actor `json:"act,omitempty"`
 }
 
+// Chain lists the parties acting on behalf of the token's subject: the one
+// presenting the token first, then each one before it, in the order the `act`
+// claims nest. An actor that names nobody ends the list.
+func (a *Actor) Chain() []string {
+	var out []string
+	for cur := a; cur != nil && cur.Subject != ""; cur = cur.Act {
+		out = append(out, cur.Subject)
+	}
+
+	return out
+}
+
+// ClaimReader reads one claim of a request's user by its name. azugo's User
+// satisfies it.
+type ClaimReader interface {
+	ClaimValue(name ...string) string
+}
+
+// ActingClient names the client that presented the token a request's user was
+// built from (ToUserClaims): on a token minted on behalf of its subject, the
+// service acting for them, the first of the `act` chain; on a service's own
+// token, that service; on a person's own token, nobody (""). A route that must
+// answer only certain clients, whoever they act for, checks this; the subject
+// says whom the request is for, this says who brought it.
+func ActingClient(u ClaimReader) string {
+	if u == nil {
+		return ""
+	}
+	if a := strings.TrimSpace(u.ClaimValue(ClaimAct)); a != "" {
+		return a
+	}
+
+	return strings.TrimSpace(u.ClaimValue(ClaimClientID))
+}
+
 // Claims is the union of every claim the platform issues. A single struct
 // covers both user and service tokens; fields that do not apply to a given
 // token type are simply omitted (`omitempty`). It embeds golang-jwt's
@@ -155,6 +190,11 @@ func (c *Claims) ToUserClaims() map[string]token.ClaimStrings {
 	}
 	if c.ClientID != "" {
 		m[ClaimClientID] = token.ClaimStrings{c.ClientID}
+	}
+	// The delegation chain, the one presenting the token first, so a route can
+	// tell who brought a request as well as whom it is for (ActingClient).
+	if chain := c.Act.Chain(); len(chain) > 0 {
+		m[ClaimAct] = token.ClaimStrings(chain)
 	}
 
 	return m

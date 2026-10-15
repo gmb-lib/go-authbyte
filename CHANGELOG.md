@@ -4,6 +4,31 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.31.0
+
+A route can now tell **which client brought a request**, not only whom it is for. Nothing a service already
+reads changes; a service that does not use the new function behaves as before.
+
+### Added
+
+- **The delegation chain reaches the request's user.** On a token minted on behalf of its subject (token
+  exchange), the user the inbound gate builds now carries the claim `act`: the services acting for the subject,
+  the one presenting the token first, then each one before it. A token with no actor carries no `act` claim, as
+  before.
+
+  A token whose `act` is `{"sub": "svc:portal-api", "act": {"sub": "svc:gateway"}}` gives
+  `ctx.User().Claim("act")` = `["svc:portal-api", "svc:gateway"]`.
+- **`claims.ActingClient(u)`** names the client that presented the token: the first of the `act` chain on a
+  delegated token, the `client_id` on a service's own token, and `""` on a person's own token or for no user. It
+  takes any value with `ClaimValue(name ...string) string` (the new `claims.ClaimReader`), which azugo's user
+  satisfies, so it is called as `claims.ActingClient(ctx.User())`.
+- **`(*claims.Actor).Chain()`** lists the chain, the presenting service first; an actor naming nobody ends it.
+
+### For a service that limits a route to some clients
+
+Compare `claims.ActingClient(ctx.User())` with the clients you allow. The subject is unchanged — it is still
+the person on a delegated token — so the existing permission checks keep working beside it.
+
 ## v0.30.0
 
 A role copied by `placement` now carries its **names in other languages**, so a service can name a

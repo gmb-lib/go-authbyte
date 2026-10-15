@@ -5,6 +5,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"azugo.io/azugo/user"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // testIDCodeLV returns a Latvian personal identity code in the PNO form a token
@@ -76,5 +79,79 @@ func TestNoTenantMeansNoClaim(t *testing.T) {
 	_ = json.Unmarshal(raw, &out)
 	if _, present := out.ToUserClaims()[ClaimTenant]; present {
 		t.Fatal("an empty tenant must not appear in the user-claim map")
+	}
+}
+
+// userOf builds the user a resource service reads, the way the inbound
+// middleware does: wire JSON → Claims → the azugo claim map.
+func userOf(t *testing.T, in Claims) *user.Basic {
+	t.Helper()
+
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Claims
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	return user.New(out.ToUserClaims())
+}
+
+// A token minted on behalf of a person names, in `act`, the service acting for
+// them, nesting whoever acted before it. The chain survives to the claim map a
+// resource service reads, the one presenting the token first, and that service
+// is the acting client — never the person, whose subject the token keeps.
+func TestTheActingChainReachesTheResourceService(t *testing.T) {
+	u := userOf(t, Claims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "sub:01PERSON"},
+		Tenant:           "01TENANTULID",
+		Act:              &Actor{Subject: "svc:portal-api", Act: &Actor{Subject: "svc:gateway"}},
+	})
+
+	if got := u.Claim(ClaimAct); len(got) != 2 || got[0] != "svc:portal-api" || got[1] != "svc:gateway" {
+		t.Fatalf("user-claim act = %v (the chain, the one presenting the token first)", got)
+	}
+	if got := ActingClient(u); got != "svc:portal-api" {
+		t.Fatalf("ActingClient = %q, want the service presenting the token", got)
+	}
+	if u.ID() != "sub:01PERSON" {
+		t.Fatalf("the subject stays the person: %q", u.ID())
+	}
+}
+
+// A service's own token is presented by that service.
+func TestAServicesOwnTokenIsPresentedByItself(t *testing.T) {
+	u := userOf(t, Claims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "svc:portal-api"},
+		ClientID:         "svc:portal-api",
+	})
+
+	if got := ActingClient(u); got != "svc:portal-api" {
+		t.Fatalf("ActingClient = %q, want the service itself", got)
+	}
+}
+
+// A person's own token names no acting client, and grows no `act` claim; nor
+// does a token whose actor names nobody. Nobody is guessed.
+func TestAPersonsOwnTokenHasNoActingClient(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		in   Claims
+	}{
+		{"a person's own token", Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "sub:01PERSON"}, SerialNumber: testIDCodeLV(1)}},
+		{"an actor naming nobody", Claims{RegisteredClaims: jwt.RegisteredClaims{Subject: "sub:01PERSON"}, Act: &Actor{}}},
+	} {
+		u := userOf(t, c.in)
+		if got := u.Claim(ClaimAct); len(got) != 0 {
+			t.Fatalf("%s: an act claim appeared: %v", c.name, got)
+		}
+		if got := ActingClient(u); got != "" {
+			t.Fatalf("%s: ActingClient = %q, want none", c.name, got)
+		}
+	}
+	if got := ActingClient(nil); got != "" {
+		t.Fatalf("no user: ActingClient = %q", got)
 	}
 }
