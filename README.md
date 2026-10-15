@@ -67,6 +67,18 @@ the underlying error, so an expired service token, a wrong audience and a replay
 distinguishable in your own logs. A missing or stale DPoP nonce is not a refusal — it is answered
 `401` with a fresh `DPoP-Nonce`, which the outbound client below retries transparently.
 
+**Who brought the request.** On a token minted on behalf of a person, the subject is the person and the
+`act` claim names the service acting for them, nesting any service before it. The inbound gate copies that
+chain into the user's claims (`act`, the service presenting the token first), and `claims.ActingClient`
+names the client that presented it: the acting service on a delegated token, the service itself on its own
+token, nobody on a person's own. A route that only certain clients may reach, whoever they act for, checks it:
+
+```go
+if !slices.Contains(allowed, claims.ActingClient(ctx.User())) {
+    ctx.Error(corehttp.ForbiddenError{}); return
+}
+```
+
 ### Outbound (service-to-service)
 
 ```go
