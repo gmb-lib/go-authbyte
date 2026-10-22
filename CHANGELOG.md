@@ -29,6 +29,12 @@ signature changes; a service picks the fix up by bumping.
 One exchange per subject token per audience and scope, where it was one per person. An edge that renews a person's
 token every few minutes exchanges once more per renewal.
 
+### Changed
+
+- **The module declares `go 1.27.3`** (was `1.27.2`). Go 1.27.3 fixes GO-2026-6809 in `crypto/x509`, which this
+  library's code reaches under 1.27.2 (`govulncheck`: one finding before the move, none after). Raise your own
+  module's `go` directive to `1.27.3`.
+
 ## v0.31.0
 
 A route can now tell **which client brought a request**, not only whom it is for. Nothing a service already
