@@ -53,6 +53,19 @@ type Client struct {
 type cachedToken struct {
 	token string
 	exp   time.Time
+	// notAfter, when set, ends reuse before exp: a delegated token is not
+	// served past the expiry of the subject token it was exchanged for.
+	notAfter time.Time
+}
+
+// servable reports whether the token may still be handed out at now: not
+// within early of its own expiry, and not past notAfter.
+func (t *cachedToken) servable(now time.Time, early time.Duration) bool {
+	if !now.Add(early).Before(t.exp) {
+		return false
+	}
+
+	return t.notAfter.IsZero() || now.Before(t.notAfter)
 }
 
 // Options configures construction of a Client.

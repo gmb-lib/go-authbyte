@@ -2,6 +2,8 @@ package authclient
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +16,7 @@ import (
 	"github.com/gmb-lib/go-platform-kit/propagation"
 
 	"azugo.io/azugo"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // RFC 8693 token exchange: the grant + the access-token type URI used for the
@@ -60,55 +63,107 @@ func (c *Client) AcquireServiceTokenForTenant(ctx context.Context, audience, sco
 		key += "|tenant=" + tenant
 	}
 
-	c.mu.Lock()
-	if t, ok := c.tokens[key]; ok && time.Until(t.exp) > c.cfg.ServiceTokenEarlyRefresh {
-		tok := t.token
-		c.mu.Unlock()
-
+	if tok, ok := c.cached(key); ok {
 		return tok, nil
 	}
-	c.mu.Unlock()
 
 	tok, ttl, err := c.requestServiceToken(ctx, audience, scope, tenant)
 	if err != nil {
 		return "", err
 	}
 
-	c.mu.Lock()
-	c.tokens[key] = &cachedToken{token: tok, exp: time.Now().Add(ttl)}
-	c.mu.Unlock()
+	c.store(key, &cachedToken{token: tok, exp: time.Now().Add(ttl)})
 
 	return tok, nil
 }
 
 // AcquireDelegatedToken returns a DPoP-bound token that acts on behalf of the
-// end user (subjectSub) toward the target audience + scope, minting one via RFC
-// 8693 token exchange (presenting subjectToken) if none is cached or the cached
-// one is near expiry. Tokens are cached per (audience, scope, subject): the
-// minted token is bound to this service's own key, so it stays reusable across
-// different subject tokens for the same user until it expires.
+// end user toward the target audience + scope, minting one via RFC 8693 token
+// exchange (presenting subjectToken) if none is cached or the cached one is
+// near expiry.
+//
+// Tokens are cached per (audience, scope, subject token): the key holds a
+// SHA-256 fingerprint of the subject token itself, never the person alone. An
+// exchanged token carries what its subject token carried — the organisation it
+// was minted for, the sign-in method, the assurance level — so a token
+// exchanged for one subject token is never handed out for another, even when
+// both name the same person: after switching organisation, or after signing in
+// again more strongly, the person presents a new subject token and gets a new
+// exchange. Keying on the whole token means no claim has to be remembered in
+// the key.
+//
+// A cached token is never reused past the subject token's own expiry, even
+// when the authority minted it to live longer: a subject token that has expired
+// no longer speaks for anyone. When that expiry cannot be read, the exchanged
+// token is not cached at all.
+//
+// subjectSub is not part of the key; the subject token already names the user.
 func (c *Client) AcquireDelegatedToken(ctx context.Context, audience, scope, subjectSub, subjectToken string) (string, error) {
-	key := "obo|" + audience + "|" + scope + "|" + subjectSub
+	fingerprint := sha256.Sum256([]byte(subjectToken))
+	key := "obo|" + audience + "|" + scope + "|" + hex.EncodeToString(fingerprint[:])
 
-	c.mu.Lock()
-	if t, ok := c.tokens[key]; ok && time.Until(t.exp) > c.cfg.ServiceTokenEarlyRefresh {
-		tok := t.token
-		c.mu.Unlock()
-
+	if tok, ok := c.cached(key); ok {
 		return tok, nil
 	}
-	c.mu.Unlock()
 
 	tok, ttl, err := c.requestDelegatedToken(ctx, audience, scope, subjectToken)
 	if err != nil {
 		return "", err
 	}
 
-	c.mu.Lock()
-	c.tokens[key] = &cachedToken{token: tok, exp: time.Now().Add(ttl)}
-	c.mu.Unlock()
+	if notAfter, ok := subjectTokenExpiry(subjectToken); ok {
+		c.store(key, &cachedToken{token: tok, exp: time.Now().Add(ttl), notAfter: notAfter})
+	}
 
 	return tok, nil
+}
+
+// subjectTokenExpiry reads the expiry a subject token states. The signature is
+// not checked, and need not be: the value only shortens how long a token
+// already exchanged for it is reused, never grants anything, and it is read from
+// the very bytes the cache key fingerprints, so a different expiry is a
+// different key. The authority checked the token, expiry included, when it
+// agreed to exchange it.
+func subjectTokenExpiry(subjectToken string) (time.Time, bool) {
+	var rc jwt.RegisteredClaims
+	if _, _, err := jwt.NewParser().ParseUnverified(subjectToken, &rc); err != nil || rc.ExpiresAt == nil {
+		return time.Time{}, false
+	}
+
+	return rc.ExpiresAt.Time, true
+}
+
+// cached returns the token stored under key while it may still be served.
+func (c *Client) cached(key string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if t, ok := c.tokens[key]; ok && t.servable(time.Now(), c.cfg.ServiceTokenEarlyRefresh) {
+		return t.token, true
+	}
+
+	return "", false
+}
+
+// store keeps t under key if it may be served at all, and removes every entry
+// that no longer may. Delegated entries are keyed per subject token, and each
+// renewed subject token is a new key, so without the sweep the cache would grow
+// for as long as the process runs.
+func (c *Client) store(key string, t *cachedToken) {
+	now := time.Now()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for k, e := range c.tokens {
+		if !e.servable(now, c.cfg.ServiceTokenEarlyRefresh) {
+			delete(c.tokens, k)
+		}
+	}
+
+	if t.servable(now, c.cfg.ServiceTokenEarlyRefresh) {
+		c.tokens[key] = t
+	}
 }
 
 // requestServiceToken performs the client-credentials hop against the auth

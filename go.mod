@@ -1,6 +1,6 @@
 module github.com/gmb-lib/go-authbyte
 
-go 1.27.2
+go 1.27.3
 
 require (
 	azugo.io/azugo v0.40.0

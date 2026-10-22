@@ -4,6 +4,37 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.31.1
+
+A token exchanged on a person's behalf is no longer handed out for **another token of the same person**. No
+signature changes; a service picks the fix up by bumping.
+
+### Fixed
+
+- **The delegated-token cache is keyed on the subject token, not the person.** `AcquireDelegatedToken` (and so
+  `GetJSONOnBehalf`, `PostJSONOnBehalf` and `DoServiceOnBehalf*`) cached a token exchanged for a person under the
+  audience, the scope and the person's subject. A person in two organisations who switched from the first to the
+  second, or who signed in again more strongly, could be served the token exchanged for the earlier one, which
+  still carried the earlier organisation and sign-in. The key is now the audience, the scope and a SHA-256
+  fingerprint of the subject token, so every claim the token carries goes with it. The `subjectSub` argument is
+  kept and no longer used for the key.
+- **No reuse past the subject token's expiry.** The authority mints an exchanged token for its own lifetime, which
+  can outlast the token it was exchanged for. A cached token is now not handed out once the subject token has
+  expired; the next call asks the authority. A subject token whose expiry cannot be read is not cached at all.
+- **Entries that can no longer be served are removed** whenever a new token is stored, so per-token keys do not
+  grow the cache for the life of the process.
+
+### What it means for a caller
+
+One exchange per subject token per audience and scope, where it was one per person. An edge that renews a person's
+token every few minutes exchanges once more per renewal.
+
+### Changed
+
+- **The module declares `go 1.27.3`** (was `1.27.2`). Go 1.27.3 fixes GO-2026-6809 in `crypto/x509`, which this
+  library's code reaches under 1.27.2 (`govulncheck`: one finding before the move, none after). Raise your own
+  module's `go` directive to `1.27.3`.
+
 ## v0.31.0
 
 A route can now tell **which client brought a request**, not only whom it is for. Nothing a service already

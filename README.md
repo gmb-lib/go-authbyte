@@ -21,7 +21,10 @@ home** (JWKS and service tokens are cached); the third runs only at login:
    logged-in user**: it exchanges that user's token for a delegated one
    (RFC 8693 token exchange) so the callee owner-filters on the user subject
    exactly as it would for a direct user call. Delegated tokens are cached per
-   `(audience, scope, subject)` and bound to this service's own key.
+   `(audience, scope, subject token)` — keyed on a SHA-256 fingerprint of the
+   user's token, so a new token (another organisation, a stronger sign-in) is
+   always a new exchange — are never reused past that token's own expiry, and
+   are bound to this service's own key.
 3. **Confidential browser login** (`asclient`) — for a back-end that logs a user
    in and holds their tokens: the authorization-code flow with PKCE, over a key
    generated per user session, so the browser never holds a token or a secret.
