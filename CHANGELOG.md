@@ -4,6 +4,15 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.31.2
+
+Dependencies updated; the module's **Go 1.27.3 requirement is unchanged**. No library source or public API changed.
+
+### Changed
+
+- `azugo.io/azugo` → v0.40.2, `azugo.io/core` → v0.40.1, `go-platform-kit` → v1.11.5,
+  `go-jose/v4` → v4.1.6, and `fasthttp` → v1.77.0. Their transitive dependencies were refreshed.
+
 ## v0.31.1
 
 A token exchanged on a person's behalf is no longer handed out for **another token of the same person**. No
