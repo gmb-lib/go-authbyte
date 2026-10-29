@@ -4,6 +4,27 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.32.0
+
+Two additions to `authclient.Client`, for a caller that mints its own token for a call. Nothing existing changes.
+
+### Added
+
+- **`Client.Thumbprint()`** answers the JWK thumbprint (RFC 7638) of the client's own DPoP key. A token minted for
+  this client's calls carries it as `cnf.jkt`, so the proofs the client signs for that token are accepted.
+- **`Client.DoWithToken(ctx, nonceKey, token, method, url, header, body)`** is `DoService` with a token the caller
+  already holds, instead of one fetched from the token endpoint, which is not asked. The request gets the same fresh
+  DPoP proof, resource-nonce retry and correlation id as every other call, and the answer comes back as it was given,
+  a refusal included. An empty token is refused before anything is sent.
+
+  The case it is for: an authorization server asking another service about the person it is signing in, with a
+  token it signed itself naming that person, so the callee answers for the token's subject alone.
+
+  ```go
+  tok := mintFor(person, "svc:rolebyte", "membership:resolve", ac.Thumbprint())
+  res, err := ac.DoWithToken(ctx, "svc:rolebyte", tok, http.MethodPost, signInURL, nil, nil)
+  ```
+
 ## v0.31.2
 
 Dependencies updated; the module's **Go 1.27.3 requirement is unchanged**. No library source or public API changed.

@@ -113,6 +113,19 @@ request context) are the on-behalf-of counterparts of `PostJSON` and
 delegation chain; `claims.Claims.Delegated()` reports whether a received token
 was minted on behalf of its subject.
 
+**A token the caller minted itself** — an authorization server asking a
+service about the person it is signing in, with a token it signed for that one
+call — goes through `DoWithToken`, with no token fetched. The token must be
+bound to this client's key: stamp `Thumbprint()` into its `cnf.jkt`. The proof,
+the nonce retry and the correlation id are the same as for every other call,
+and the answer comes back as it was given, a refusal included.
+
+```go
+tok := mintFor(person, "svc:rolebyte", "membership:resolve", ac.Thumbprint())
+res, err := ac.DoWithToken(ctx, "svc:rolebyte", tok, http.MethodPost,
+    "http://rolebyte:8081/api/v1/sign-in/memberships", nil, nil)
+```
+
 Outbound calls run under a 15s overall timeout by default. For operations that
 legitimately outlast it — e.g. a long-term-archival document validation, where
 the upstream work alone can take tens of seconds — use the per-call variants

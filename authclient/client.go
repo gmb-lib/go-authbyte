@@ -35,6 +35,9 @@ type Client struct {
 	// dpopKey is this service's own DPoP key, used to sign proofs on outbound
 	// calls. Ephemeral and per-pod.
 	dpopKey *ecdsa.PrivateKey
+	// jkt is dpopKey's JWK thumbprint (RFC 7638), what a token bound to it
+	// carries as cnf.jkt.
+	jkt string
 
 	tokenURL string
 	httpc    *http.Client
@@ -104,6 +107,10 @@ func New(cfg *Configuration, opts ...Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	jkt, err := dpop.Thumbprint(&dpopKey.PublicKey)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Client{
 		cfg:      cfg,
@@ -111,6 +118,7 @@ func New(cfg *Configuration, opts ...Options) (*Client, error) {
 		replay:   store,
 		nonce:    ni,
 		dpopKey:  dpopKey,
+		jkt:      jkt,
 		tokenURL: strings.TrimSuffix(cfg.IssuerURL, "/") + "/token",
 		// otel-instrumented transport so outbound S2S calls (service-token mint,
 		// DoService background DPoP requests, PostJSON) appear as client spans and

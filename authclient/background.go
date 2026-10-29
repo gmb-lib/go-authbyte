@@ -103,6 +103,28 @@ func (c *Client) DoServiceOnBehalfWithTimeout(ctx context.Context, timeout time.
 	return c.doBackgroundWith(ctx, c.httpcNoTimeout, audience, token, method, fullURL, reqHeader, body)
 }
 
+// Thumbprint answers the JWK thumbprint (RFC 7638) of this client's own DPoP
+// key: what a token minted for this client's calls carries as cnf.jkt, so the
+// proofs the client signs for it are accepted.
+func (c *Client) Thumbprint() string {
+	return c.jkt
+}
+
+// DoWithToken is DoService with a token the caller already holds instead of one
+// this client fetches: a token the caller minted itself, bound to this client's
+// key (Thumbprint). Nothing is asked of the token endpoint. The request gets the
+// same fresh DPoP proof, resource-nonce retry and correlation id as every other
+// call, and the answer is returned as it came, a refusal included. nonceKey
+// scopes the cached resource nonce: the callee's audience. An empty token is
+// refused before anything is sent.
+func (c *Client) DoWithToken(ctx context.Context, nonceKey, token, method, fullURL string, reqHeader http.Header, body []byte) (*BackgroundResponse, error) {
+	if strings.TrimSpace(token) == "" {
+		return nil, fmt.Errorf("auth-client: %s %s: the token is empty", strings.ToUpper(method), fullURL)
+	}
+
+	return c.doBackground(ctx, nonceKey, token, method, fullURL, reqHeader, body)
+}
+
 // doBackground issues the request with the given token through the client's own
 // net/http transport (not the framework request client), attaching a fresh DPoP
 // proof and retrying once on a resource DPoP-Nonce challenge. nonceKey scopes
