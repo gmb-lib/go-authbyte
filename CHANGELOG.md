@@ -4,7 +4,7 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
-## Unreleased
+## v0.32.0
 
 Two additions to `authclient.Client`, for a caller that mints its own token for a call. Nothing existing changes.
 
