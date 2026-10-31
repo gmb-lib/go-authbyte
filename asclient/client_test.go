@@ -54,22 +54,116 @@ func TestAuthorizeURLIncludesACRValuesWhenRequested(t *testing.T) {
 	qt.Check(t, qt.IsFalse(u.Query().Has("acr_values")))
 }
 
-// TestLogoutURLIncludesSidOnlyWhenPresent proves the front-channel logout redirect
-// carries the upstream session handle when known, and omits it (rather than
-// sending it empty) for a non-federated login with no upstream session.
-func TestLogoutURLIncludesSidOnlyWhenPresent(t *testing.T) {
+// The browser's sign-out address carries the client, where to land and the login
+// method, and nothing else: no value names the session, because a browser address
+// is kept in history and logs. The method is left out when unknown.
+func TestTheSignOutAddressNamesNoSession(t *testing.T) {
 	c := New("https://public", "https://internal", "client-1", "https://app/callback")
 
-	u, err := url.Parse(c.LogoutURL("https://app/login", "refresh-1"))
+	u, err := url.Parse(c.BrowserLogoutURL("https://app/login", "eparakstsMobile"))
 	qt.Assert(t, qt.IsNil(err))
-	qt.Check(t, qt.Equals(u.Path, "/logout"))
-	qt.Check(t, qt.Equals(u.Query().Get("client_id"), "client-1"))
-	qt.Check(t, qt.Equals(u.Query().Get("redirect_uri"), "https://app/login"))
-	qt.Check(t, qt.Equals(u.Query().Get("sid"), "refresh-1"))
+	qt.Check(t, qt.Equals(u.Scheme+"://"+u.Host+u.Path, "https://public/logout"))
+	qt.Check(t, qt.DeepEquals(u.Query(), url.Values{
+		"client_id":    {"client-1"},
+		"redirect_uri": {"https://app/login"},
+		"login_method": {"eparakstsMobile"},
+	}))
 
-	u, err = url.Parse(c.LogoutURL("https://app/login", ""))
+	u, err = url.Parse(c.BrowserLogoutURL("https://app/login", ""))
 	qt.Assert(t, qt.IsNil(err))
-	qt.Check(t, qt.IsFalse(u.Query().Has("sid")))
+	qt.Check(t, qt.DeepEquals(u.Query(), url.Values{
+		"client_id":    {"client-1"},
+		"redirect_uri": {"https://app/login"},
+	}))
+}
+
+// Revoke ends the session server to server: it posts the refresh token as this
+// client, with a proof of possession of the session key, to the internal address.
+func TestRevokeSendsTheTokenTheClientAndAProof(t *testing.T) {
+	type captured struct {
+		path, contentType, proof string
+		form                     url.Values
+	}
+	capt := make(chan captured, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		capt <- captured{path: r.URL.Path, contentType: r.Header.Get("Content-Type"), proof: r.Header.Get("DPoP"), form: r.PostForm}
+	}))
+	defer srv.Close()
+
+	c := New("https://public", srv.URL, "client-1", "https://app/callback")
+	key, err := GenerateKey()
+	qt.Assert(t, qt.IsNil(err))
+
+	qt.Assert(t, qt.IsNil(c.Revoke(context.Background(), key, "refresh-1")))
+
+	got := <-capt
+	qt.Check(t, qt.Equals(got.path, "/revoke"))
+	qt.Check(t, qt.Equals(got.contentType, "application/x-www-form-urlencoded"))
+	qt.Check(t, qt.Not(qt.Equals(got.proof, "")))
+	qt.Check(t, qt.DeepEquals(got.form, url.Values{
+		"token":           {"refresh-1"},
+		"token_type_hint": {"refresh_token"},
+		"client_id":       {"client-1"},
+	}))
+}
+
+// A refused revocation is an error that carries the status, so the caller can
+// tell a refusal from success; it still ends what it keeps on its side.
+func TestRevokeRefusalIsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	c := New("https://public", srv.URL, "client-1", "https://app/callback")
+	key, err := GenerateKey()
+	qt.Assert(t, qt.IsNil(err))
+
+	err = c.Revoke(context.Background(), key, "refresh-1")
+	var asErr *Error
+	qt.Assert(t, qt.ErrorAs(err, &asErr))
+	qt.Check(t, qt.Equals(asErr.Status, http.StatusUnauthorized))
+}
+
+// Revoke answers the server's nonce challenge once, as every proven call does.
+func TestRevokeRetriesWithServerNonce(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.Header().Set("DPoP-Nonce", "server-nonce")
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+		parts := strings.Split(r.Header.Get("DPoP"), ".")
+		payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
+		if !strings.Contains(string(payload), `"nonce":"server-nonce"`) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	defer srv.Close()
+
+	c := New("https://public", srv.URL, "client-1", "https://app/callback")
+	key, err := GenerateKey()
+	qt.Assert(t, qt.IsNil(err))
+
+	qt.Check(t, qt.IsNil(c.Revoke(context.Background(), key, "refresh-1")))
+	qt.Check(t, qt.Equals(calls, 2))
+}
+
+// A step-up names the session by its refresh token: the Auth Service keeps its
+// own session id to itself.
+func TestAStepUpNamesTheSessionByItsRefreshToken(t *testing.T) {
+	b, err := json.Marshal(StepUpRequest{RefreshToken: "refresh-1", ClientID: "client-1"})
+	qt.Assert(t, qt.IsNil(err))
+
+	var got map[string]any
+	qt.Assert(t, qt.IsNil(json.Unmarshal(b, &got)))
+	qt.Check(t, qt.Equals(got["refresh_token"], any("refresh-1")))
+	qt.Check(t, qt.IsFalse(func() bool { _, ok := got["session_id"]; return ok }()))
 }
 
 // TestTrailingSlashesAreTrimmed proves a base address configured with a trailing

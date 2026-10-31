@@ -185,11 +185,21 @@ tokens, err := as.ExchangeCode(ctx, key, code, verifier)
 // 3. Later: refresh, read the identity, or elevate the session.
 tokens, err = as.Refresh(ctx, key, tokens.RefreshToken)
 id, err := as.Identity(ctx, key, tokens.AccessToken)
+
+// 4. Sign-out: end the session at the authority, server to server, then send
+// the browser through its logout leg, which names no session.
+_ = as.Revoke(ctx, key, refreshToken)
+redirect = as.BrowserLogoutURL(postLogoutURL, loginMethod)
 ```
 
 `WebEIDChallenge` / `WebEIDLogin` drive an ID-card login (the card challenge is
 answered in the browser; the session key is proven at the token exchange), and
-`StepUp` asks the authority to elevate an existing session to a stronger method.
+`StepUp` asks the authority to elevate an existing session to a stronger method,
+naming it by its refresh token (`StepUpRequest.RefreshToken`). A step-up's code
+exchange answers no refresh token: keep the one the session holds. The refresh
+token is answered to the back-end only and is bound there to this client and the
+session key; it never belongs in a browser address, which is why the sign-out runs
+`Revoke` before the browser leaves.
 `ParseUnverified` reads a token this service was just issued into the shared claim
 model — for labelling the session it already holds, never for authorizing anything.
 

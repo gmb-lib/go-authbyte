@@ -4,6 +4,43 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.33.0
+
+**Breaking for every `asclient` caller that signs out or steps up.** The browser's sign-out address no longer carries
+the session's refresh token, and the session is ended server to server instead. It needs an Auth Service that serves
+`POST /revoke` and names a step-up's session by `refresh_token`.
+
+### Added
+
+- **`Client.Revoke(ctx, key, refreshToken)`** ends the session at the Auth Service ([RFC 7009]): it posts the
+  refresh token as this client, with a proof of possession of the session key, and answers the server's nonce
+  challenge once. A token the Auth Service no longer holds counts as success; a refusal (another client's token, a
+  proof of another key) or an outage comes back as an `*Error` carrying the status.
+
+### Changed
+
+- **`Client.LogoutURL(redirectURI, sid)` is replaced by `Client.BrowserLogoutURL(redirectURI, loginMethod)`.** The
+  address carries `client_id`, `redirect_uri` and, when known, `login_method`, and nothing that names the session. The
+  method has a new name on purpose: a call that passed the refresh token to the old one would otherwise still compile
+  and put the token in the address.
+- **`StepUpRequest.SessionID` (`session_id`) is now `StepUpRequest.RefreshToken` (`refresh_token`).**
+- **A step-up's `ExchangeCode` answers no refresh token** (`Tokens.RefreshToken` is empty): keep the one the session
+  holds.
+
+### Migrating
+
+A sign-out becomes:
+
+```go
+_ = as.Revoke(ctx, key, sess.RefreshToken) // end it at the authority; a refusal is logged, never fatal
+redirect := as.BrowserLogoutURL(postLogoutURL, sess.LoginMethod)
+```
+
+- **Every back-end that signs a person out** replaces its `LogoutURL` call with the two lines above. Ending its own
+  session does not wait on `Revoke`: a refusal or an outage is logged, and the browser still leaves.
+- **A back-end that steps a session up** sets `StepUpRequest.RefreshToken` and keeps the refresh token it holds when a
+  step-up's exchange answers none.
+
 ## v0.32.0
 
 Two additions to `authclient.Client`, for a caller that mints its own token for a call. Nothing existing changes.
