@@ -4,6 +4,29 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.34.0
+
+Nothing breaks for a caller that already builds on v0.33.0.
+
+### Added
+
+- **`Tokens.Capabilities`** (`*asclient.Capabilities`, with `asclient.Seal`) carries the signing-capability set the
+  Auth Service answers on a code exchange: `sign_identity_id`, `signing_certificate`, `auth_certificate`, `seals`
+  and `seals_known`. It is nil when the answer has none, which means "unknown", never "none"; a refresh never
+  carries it. The certificates carry personal data: keep them with the session, never log them.
+
+### Changed
+
+- **`SerialFromToken` answers the identity code in the spelling codes are compared in** (`identitycode.Key`) instead
+  of the claim as written. A code the Auth Service issued is already in that spelling, so its answer is unchanged;
+  a claim spelt another way (lower case, split, padded) now matches the stored record it names.
+
+### Migrating
+
+- **A back-end that keeps its own copy of these types** decodes the token answer with `asclient.Tokens` and drops the
+  copy; the JSON names are the same.
+- **A caller that canonicalised `SerialFromToken`'s answer itself** may drop that step; doing it twice is harmless.
+
 ## v0.33.0
 
 **Breaking for every `asclient` caller that signs out or steps up.** The browser's sign-out address no longer carries

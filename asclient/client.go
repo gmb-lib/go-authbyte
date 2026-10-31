@@ -89,6 +89,34 @@ type Tokens struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
+	// Capabilities is the signing-capability set the Auth Service captured at
+	// login. It comes only with a code exchange, never with a refresh, and only
+	// when the login captured one: nil means "unknown", never "none". The
+	// certificates in it carry personal data — keep it with the session it
+	// belongs to, and never log it.
+	Capabilities *Capabilities `json:"capabilities,omitempty"`
+}
+
+// Capabilities is the signing-capability set of a logged-in session: the signing
+// identity the session's login method uses, its certificate, the paired
+// authentication certificate, and the organisation seals the person may sign
+// with. Every field is optional.
+type Capabilities struct {
+	SignIdentityID     string `json:"sign_identity_id,omitempty"`
+	SigningCertificate string `json:"signing_certificate,omitempty"`
+	AuthCertificate    string `json:"auth_certificate,omitempty"`
+	Seals              []Seal `json:"seals,omitempty"`
+	// SealsKnown says the seal list is authoritative: with it set, an empty list
+	// means the person verifiably holds no seals rather than "unknown".
+	SealsKnown bool `json:"seals_known,omitempty"`
+}
+
+// Seal is one organisation seal: the identity id a signing request selects it
+// by, the display name a picker shows, and its certificate.
+type Seal struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Certificate string `json:"certificate,omitempty"`
 }
 
 // Identity is the logged-in user's identity, including which flows the login
