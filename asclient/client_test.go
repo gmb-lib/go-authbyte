@@ -219,6 +219,40 @@ func TestExchangeCodeSendsFormAndProof(t *testing.T) {
 	qt.Check(t, qt.Equals(got.form.Get("redirect_uri"), "https://app/callback"))
 }
 
+// TestExchangeCodeKeepsTheSigningCapabilities proves the code exchange hands the
+// caller the signing-capability set the Auth Service captured at login, and that
+// an answer without one stays nil — "unknown", which a caller must not read as
+// "holds nothing".
+func TestExchangeCodeKeepsTheSigningCapabilities(t *testing.T) {
+	answer := `{"access_token":"at","token_type":"DPoP","expires_in":300,"refresh_token":"rt",` +
+		`"capabilities":{"sign_identity_id":"id-sign-1","signing_certificate":"MIIsign","auth_certificate":"MIIauth",` +
+		`"seals":[{"id":"id-seal-1","label":"Org One : seal","certificate":"MIIseal"}],"seals_known":true}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(answer))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, srv.URL, "client-1", "https://app/callback")
+	key, err := GenerateKey()
+	qt.Assert(t, qt.IsNil(err))
+
+	tokens, err := c.ExchangeCode(context.Background(), key, "code-1", "verifier-1")
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.DeepEquals(tokens.Capabilities, &Capabilities{
+		SignIdentityID:     "id-sign-1",
+		SigningCertificate: "MIIsign",
+		AuthCertificate:    "MIIauth",
+		Seals:              []Seal{{ID: "id-seal-1", Label: "Org One : seal", Certificate: "MIIseal"}},
+		SealsKnown:         true,
+	}))
+
+	answer = `{"access_token":"at","token_type":"DPoP","expires_in":300,"refresh_token":"rt"}`
+	tokens, err = c.ExchangeCode(context.Background(), key, "code-2", "verifier-2")
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.IsNil(tokens.Capabilities))
+}
+
 // TestProofRetriesWithServerNonce proves the one behaviour a login silently
 // depends on: when the Auth Service refuses a proof and hands back a nonce, the
 // call is retried once with that nonce inside the proof. Without the retry every

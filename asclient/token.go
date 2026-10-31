@@ -2,6 +2,7 @@ package asclient
 
 import (
 	"github.com/gmb-lib/go-authbyte/claims"
+	"github.com/gmb-lib/go-authbyte/identitycode"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -37,14 +38,18 @@ func SubjectFromToken(token string) string {
 
 // SerialFromToken reads the identity code a token carries (the serial number
 // claim) — the code that names the legal person, so a caller can be matched to a
-// record keyed on it. Returns "" when the claim is absent.
+// record keyed on it. It answers the code in the spelling identity codes are
+// compared in (identitycode.Key), whatever spelling the claim used: the record
+// was written by somebody else, and a mismatch means a person is not recognised
+// as themselves, which tells them nothing about why. Returns "" when the claim is
+// absent.
 func SerialFromToken(token string) string {
 	cl, err := ParseUnverified(token)
-	if err != nil {
+	if err != nil || cl.SerialNumber == "" {
 		return ""
 	}
 
-	return cl.SerialNumber
+	return identitycode.Key(cl.SerialNumber)
 }
 
 // LoginBindingFromToken reads the login method and assurance level a token is

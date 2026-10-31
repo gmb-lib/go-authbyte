@@ -52,6 +52,17 @@ func TestSerialFromToken(t *testing.T) {
 	qt.Check(t, qt.Equals(SerialFromToken("not-a-jwt"), ""))
 }
 
+// TestSerialFromTokenAnswersTheComparedSpelling proves the code comes back in the
+// one spelling identity codes are stored and compared in, whatever spelling the
+// claim used: a caller matches it against a record somebody else wrote, and a
+// mismatch there means a person is not recognised as themselves.
+func TestSerialFromTokenAnswersTheComparedSpelling(t *testing.T) {
+	for _, claim := range []string{"PNOLV-010180-15097", "pnolv-01018015097", " PNOLV-01018015097 "} {
+		got := SerialFromToken(jwtWith(map[string]any{"serial_number": claim}))
+		qt.Check(t, qt.Equals(got, "PNOLV-01018015097"), qt.Commentf("claim %q", claim))
+	}
+}
+
 func TestLoginBindingFromToken(t *testing.T) {
 	// The same person via two methods → two distinct bindings, so an on-behalf
 	// token cache keyed on the stable subject does not cross login methods.

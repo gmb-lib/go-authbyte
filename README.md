@@ -202,6 +202,15 @@ session key; it never belongs in a browser address, which is why the sign-out ru
 `Revoke` before the browser leaves.
 `ParseUnverified` reads a token this service was just issued into the shared claim
 model — for labelling the session it already holds, never for authorizing anything.
+`SerialFromToken` answers its identity code in the spelling codes are compared in
+(`identitycode.Key`), ready to match against a record somebody else wrote.
+
+A code exchange also hands back `Tokens.Capabilities` when the login captured a
+signing-capability set: the signing identity, its certificate, the paired
+authentication certificate and the organisation seals the person may sign with.
+It is nil when the authority sent none, which means "unknown", never "none"; a
+refresh never carries it, so keep it with the session. The certificates carry
+personal data and are never logged.
 
 ### One spelling of an identity code (`identitycode`)
 
