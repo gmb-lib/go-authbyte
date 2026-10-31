@@ -170,8 +170,15 @@ a login reads as one trace across the caller and the authority. `WithHTTPClient`
 overrides the client when a caller needs its own timeout or transport — and then
 owns instrumenting it.
 
+A back-end the authority registers as a **confidential** client passes its secret
+with `WithClientSecret`: the client then proves itself at every call it makes as
+itself — by HTTP Basic on the code exchange, a refresh and a revocation, and in the
+body of a step-up, whose `Authorization` header carries the person's access token.
+Without it the client is public and sends no secret, as before.
+
 ```go
-as := asclient.New(publicURL, internalURL, clientID, redirectURI)
+as := asclient.New(publicURL, internalURL, clientID, redirectURI,
+    asclient.WithClientSecret(clientSecret)) // a confidential client; omit for a public one
 
 // 1. Start: one key + one PKCE pair per session, then send the browser off.
 key, _ := asclient.GenerateKey()
@@ -472,6 +479,10 @@ service; everything else defaults safely.
 | `DPOP_NONCE_ENABLED` | `true` | Require + issue `DPoP-Nonce`. |
 | `DPOP_NONCE_TTL` | `5m` | Issued nonce lifetime. |
 | `REQUIRE_DPOP` | `true` | Enforce DPoP on inbound. |
+
+A service that answers for more than one audience — an authority serving several
+products' sign-in clients, say — sets `AlsoAcceptedAudiences` in code: an inbound
+token may then name any one of those audiences instead of `ServiceAudience`.
 
 **TLS is selected by the URL scheme.** `rediss://…` connects over TLS; `redis://…` does not. `skip_verify=true` only relaxes certificate verification on a `rediss://` URL — on a `redis://` URL the client rejects it outright (`redis: unexpected option: skip_verify`) rather than silently upgrading the connection. Earlier Azugo versions did treat `skip_verify=true` as an implicit request for TLS; that side-effect is fixed from **Azugo v0.37** onwards, so a TLS endpoint must always be addressed as `rediss://`.
 

@@ -4,6 +4,28 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.35.0
+
+Nothing breaks for a caller that already builds on v0.34.0.
+
+### Added
+
+- **`asclient.WithClientSecret(secret)`** makes the sign-in client confidential. It then proves itself at every call
+  it makes as itself: by HTTP Basic on `ExchangeCode`, `Refresh` and `Revoke`, the client id and the secret each
+  form-encoded first, as the Basic scheme for client authentication requires; and as `client_secret` in the body of
+  `StepUp`, whose `Authorization` header carries the person's access token. The secret never travels in a form.
+  Without the option the client is public and sends no secret, as before.
+- **`authclient.Configuration.AlsoAcceptedAudiences`**: further audiences an inbound token may name instead of
+  `ServiceAudience`; any one suffices. For a service that answers for several audiences. Unset, only
+  `ServiceAudience` is accepted, as before, and an empty entry accepts nothing.
+
+### Migrating
+
+- **A back-end that signs people in** passes its secret with `WithClientSecret` when the authority registers its
+  sign-in client as confidential, and not before: the authority must take client authentication at its token,
+  revocation and step-up endpoints.
+- **A service that answers for several audiences** lists the others in `AlsoAcceptedAudiences`.
+
 ## v0.34.0
 
 Nothing breaks for a caller that already builds on v0.33.0.
