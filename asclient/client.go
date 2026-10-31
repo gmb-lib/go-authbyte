@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/gmb-lib/go-authbyte/dpop"
+	"github.com/gmb-lib/go-authbyte/jwks"
 	"github.com/gmb-lib/go-platform-kit/propagation"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -44,6 +45,8 @@ type Client struct {
 	clientSecret string // empty for a public client
 	redirectURI  string
 	httpc        *http.Client
+	issuer       string       // the issuer a sign-in's answers must name; empty until WithIssuer
+	keys         *jwks.Client // the Auth Service's published signing keys, for ID tokens
 }
 
 // Option adjusts a Client at construction.
@@ -89,6 +92,10 @@ func New(publicURL, internalURL, clientID, redirectURI string, opts ...Option) *
 	for _, opt := range opts {
 		opt(c)
 	}
+	// Built after the options, so the keys are fetched through the caller's own
+	// HTTP client when it supplied one. Nothing is fetched until an ID token
+	// names a key.
+	c.keys = jwks.New(c.internalURL+"/.well-known/jwks.json", jwksCacheTTL, jwks.WithHTTPClient(c.httpc))
 
 	return c
 }
@@ -99,6 +106,10 @@ type Tokens struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
+	// IDToken is the sign-in's ID token, answered only to a sign-in that asked
+	// for one (AuthorizationURL). Check it with ExchangeSignIn, never read it
+	// unchecked.
+	IDToken string `json:"id_token,omitempty"`
 	// Capabilities is the signing-capability set the Auth Service captured at
 	// login. It comes only with a code exchange, never with a refresh, and only
 	// when the login captured one: nil means "unknown", never "none". The
@@ -157,17 +168,19 @@ type StepUpRequest struct {
 }
 
 // AuthorizeURL builds the browser-facing authorization redirect for the
-// authorization-code flow. acrValues, when set, asks the Auth Service to force a
-// specific login method.
+// authorization-code flow, asking for no ID token. acrValues, when set, names the
+// sign-in methods the person may use, in the Auth Service's own method names.
 //
-// prompt=login forces a fresh authentication: without it the identity provider can
-// answer the request from a still-live single-sign-on session and silently return
-// that session's login method, ignoring the requested acr_values — so asking for a
-// card login while a mobile session lingers would log the user in as mobile.
-// Because the login method carries authorization weight, the requested method must
-// always win, so every login re-authenticates rather than riding an existing
-// upstream session.
+// It asks for no fresh sign-in: the Auth Service refuses a sign-in completed with
+// a method the request did not name, whatever an upstream session answered, so
+// the requested method still wins. A caller that needs a fresh sign-in, or an ID
+// token, uses AuthorizationURL.
 func (c *Client) AuthorizeURL(challenge, state, acrValues string) string {
+	return c.publicURL + "/authorize?" + c.authorizeQuery(challenge, state, acrValues).Encode()
+}
+
+// authorizeQuery is the part of an authorization request every sign-in sends.
+func (c *Client) authorizeQuery(challenge, state, acrValues string) url.Values {
 	q := url.Values{}
 	q.Set("client_id", c.clientID)
 	q.Set("response_type", "code")
@@ -175,12 +188,11 @@ func (c *Client) AuthorizeURL(challenge, state, acrValues string) string {
 	q.Set("code_challenge_method", "S256")
 	q.Set("redirect_uri", c.redirectURI)
 	q.Set("state", state)
-	q.Set("prompt", "login")
 	if acrValues != "" {
 		q.Set("acr_values", acrValues)
 	}
 
-	return c.publicURL + "/authorize?" + q.Encode()
+	return q
 }
 
 // BrowserLogoutURL builds the browser's leg of a sign-out: the front-channel
@@ -293,12 +305,27 @@ func (c *Client) Identity(ctx context.Context, key *ecdsa.PrivateKey, accessToke
 // per-session key is proven only at the final token exchange. Returns the card
 // challenge nonce (the browser signs it with the card) and the flow handle.
 func (c *Client) WebEIDChallenge(ctx context.Context, codeChallenge, state string) (nonce, flow string, err error) {
+	return c.webEIDChallenge(ctx, codeChallenge, state, "")
+}
+
+// WebEIDChallengeWithNonce begins an ID-card login that asks for an ID token, as
+// AuthorizationURL does for a redirect: the token the code is exchanged for
+// carries idTokenNonce back. Redeem the code with ExchangeSignIn.
+func (c *Client) WebEIDChallengeWithNonce(ctx context.Context, codeChallenge, state, idTokenNonce string) (nonce, flow string, err error) {
+	return c.webEIDChallenge(ctx, codeChallenge, state, idTokenNonce)
+}
+
+func (c *Client) webEIDChallenge(ctx context.Context, codeChallenge, state, idTokenNonce string) (nonce, flow string, err error) {
 	q := url.Values{}
 	q.Set("client_id", c.clientID)
 	q.Set("code_challenge", codeChallenge)
 	q.Set("code_challenge_method", "S256")
 	q.Set("redirect_uri", c.redirectURI)
 	q.Set("state", state)
+	if idTokenNonce != "" {
+		q.Set("scope", scopeOpenID)
+		q.Set("nonce", idTokenNonce)
+	}
 
 	body, status, err := c.plainDo(ctx, http.MethodGet, "/webeid/challenge?"+q.Encode(), "", nil)
 	if err != nil {

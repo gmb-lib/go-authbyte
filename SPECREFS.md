@@ -13,7 +13,10 @@ is the pin: an IETF RFC is never revised in place, and a revision gets a new num
 | IETF RFC 7009 | — | Token revocation: the request the client package's `Revoke` sends. |
 | IETF RFC 7519 | — | JSON Web Token: the audience claim an inbound token is checked against (§4.1.3). |
 | IETF RFC 7636 | — | Proof Key for Code Exchange: the verifier and challenge the client package generates for an authorization-code flow. |
+| IETF RFC 8176 | — | Authentication Method Reference values: the means of authentication an ID token's `amr` names (§2). |
+| IETF RFC 9207 | — | Authorization server issuer identification: the `iss` parameter the client package checks on the browser's return (§2.4). |
 | IETF RFC 9449 | — | OAuth 2.0 Demonstrating Proof of Possession: the proof the `dpop` package builds and verifies, including the HTTP URI it is bound to and the server-issued nonce. |
+| OpenID Connect Core 1.0 | **incorporating errata set 2** (December 2023) | The ID token's claims (§2), the authentication request the client package builds (§3.1.2.1) and the checks it makes of an ID token (§3.1.3.7). |
 
 When an edition here is superseded, re-check the citations naming the old edition
 before bumping the pin — clause numbering moves between editions, so a citation can

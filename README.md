@@ -176,18 +176,41 @@ itself — by HTTP Basic on the code exchange, a refresh and a revocation, and i
 body of a step-up, whose `Authorization` header carries the person's access token.
 Without it the client is public and sends no secret, as before.
 
+A sign-in that asks for an **ID token** proves itself to the back-end too. The
+back-end names the authority's issuer with `WithIssuer`, exactly as its discovery
+document states it, and keeps a nonce with each sign-in. On the browser's return it
+checks the `iss` parameter before using anything in it (`CheckIssuer`), then redeems
+the code with `ExchangeSignIn`, which refuses, and returns no tokens, unless the
+answer's ID token comes from that issuer, names this client as its only audience,
+names a subject and its issue time, is unexpired, is signed with ES256 by a key the
+authority publishes, carries the nonce, was met by one of the methods named, and,
+when an age was asked, names an authentication no older than it. A refused ID token
+also ends the session the exchange opened. For a fresh sign-in pass `MaxAge` of
+zero to both calls: `Prompt: "login"` alone is a request, which only the checked
+authentication time proves.
+
 ```go
 as := asclient.New(publicURL, internalURL, clientID, redirectURI,
-    asclient.WithClientSecret(clientSecret)) // a confidential client; omit for a public one
+    asclient.WithClientSecret(clientSecret), // a confidential client; omit for a public one
+    asclient.WithIssuer(issuerURL))          // the issuer a sign-in's answers must name
 
-// 1. Start: one key + one PKCE pair per session, then send the browser off.
+// 1. Start: one key + one PKCE pair + one nonce per sign-in, kept with it,
+// then send the browser off.
 key, _ := asclient.GenerateKey()
 verifier, challenge, _ := asclient.PKCE()
 state, _ := asclient.RandomToken(32)
-redirect := as.AuthorizeURL(challenge, state, "") // acr_values forces a method
+nonce, _ := asclient.RandomToken(32)
+redirect := as.AuthorizationURL(asclient.AuthorizationRequest{
+    CodeChallenge: challenge, State: state, Nonce: nonce,
+    ACRValues: "",   // the authority's method names, to name the way in
+    MaxAge:    nil,  // a pointer to zero for a fresh sign-in, passed to the check too
+})
 
-// 2. Callback: redeem the code, proving possession of that session's key.
-tokens, err := as.ExchangeCode(ctx, key, code, verifier)
+// 2. Callback: check who answered, then redeem the code, proving possession of
+// that session's key, and check the ID token.
+if err := as.CheckIssuer(iss); err != nil { /* refuse; redeem nothing */ }
+tokens, id, err := as.ExchangeSignIn(ctx, key, code, verifier,
+    asclient.IDTokenCheck{Nonce: nonce, ACRValues: "", MaxAge: nil, Started: startedAt})
 
 // 3. Later: refresh, read the identity, or elevate the session.
 tokens, err = as.Refresh(ctx, key, tokens.RefreshToken)
@@ -199,8 +222,13 @@ _ = as.Revoke(ctx, key, refreshToken)
 redirect = as.BrowserLogoutURL(postLogoutURL, loginMethod)
 ```
 
+`AuthorizeURL` and `ExchangeCode` remain for a sign-in that asks for no ID token.
+`AuthorizeURL` asks for no fresh sign-in: the authority refuses a sign-in completed
+with a method the request did not name, so the named method still wins.
+
 `WebEIDChallenge` / `WebEIDLogin` drive an ID-card login (the card challenge is
-answered in the browser; the session key is proven at the token exchange), and
+answered in the browser; the session key is proven at the token exchange;
+`WebEIDChallengeWithNonce` asks for an ID token, redeemed with `ExchangeSignIn`), and
 `StepUp` asks the authority to elevate an existing session to a stronger method,
 naming it by its refresh token (`StepUpRequest.RefreshToken`). A step-up's code
 exchange answers no refresh token: keep the one the session holds. The refresh
