@@ -9,6 +9,9 @@ is the pin: an IETF RFC is never revised in place, and a revision gets a new num
 | Source | Pinned edition | What it governs here |
 |---|---|---|
 | ETSI EN 319 412-1 | **V1.7.1** (May 2026) | The identity types an identity code can carry, and which of them belong to a natural person rather than to an organisation: the natural-person semantics (§5.1.3, carried in a certificate subject's `serialNumber`) and the legal-person semantics (§5.1.4, carried in its `organizationIdentifier`). `identitycode` recognises a subset of these and reads the natural/legal split from them. |
+| IETF RFC 6749 | — | The OAuth 2.0 framework: how a confidential client authenticates with HTTP Basic, its id and secret form-encoded first (§2.3.1), as the client package does. |
+| IETF RFC 7009 | — | Token revocation: the request the client package's `Revoke` sends. |
+| IETF RFC 7519 | — | JSON Web Token: the audience claim an inbound token is checked against (§4.1.3). |
 | IETF RFC 7636 | — | Proof Key for Code Exchange: the verifier and challenge the client package generates for an authorization-code flow. |
 | IETF RFC 9449 | — | OAuth 2.0 Demonstrating Proof of Possession: the proof the `dpop` package builds and verifies, including the HTTP URI it is bound to and the server-issued nonce. |
 

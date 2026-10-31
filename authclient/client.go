@@ -227,10 +227,22 @@ func (c *Client) parseToken(ctx context.Context, tokenStr string) (*claims.Claim
 		return nil, refuse(errUnauthorized, "no token on the request", nil)
 	}
 
+	// The token must name this service's audience or one of the further ones it
+	// accepts; any one suffices, as each principal a token is meant for names
+	// itself in its audience [RFC 7519 §4.1.3]. An empty entry is left out: the
+	// parser refuses a token whose only audience is "", but would match "" named
+	// beside another value.
+	audiences := []string{c.cfg.ServiceAudience}
+	for _, aud := range c.cfg.AlsoAcceptedAudiences {
+		if aud != "" {
+			audiences = append(audiences, aud)
+		}
+	}
+
 	parser := jwt.NewParser(
 		jwt.WithValidMethods([]string{jwt.SigningMethodES256.Alg()}),
 		jwt.WithIssuer(c.cfg.IssuerURL),
-		jwt.WithAudience(c.cfg.ServiceAudience),
+		jwt.WithAudience(audiences...),
 		jwt.WithLeeway(c.cfg.TokenClockSkewLeeway),
 		jwt.WithExpirationRequired(),
 	)

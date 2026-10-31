@@ -38,11 +38,12 @@ const DefaultTimeout = 30 * time.Second
 // and step-up calls use the in-network address, which is also the proof URL bound
 // into each of those calls (so it matches what the Auth Service reconstructs).
 type Client struct {
-	publicURL   string // browser-facing authorization redirect
-	internalURL string // server-side calls + proof URL
-	clientID    string
-	redirectURI string
-	httpc       *http.Client
+	publicURL    string // browser-facing authorization redirect
+	internalURL  string // server-side calls + proof URL
+	clientID     string
+	clientSecret string // empty for a public client
+	redirectURI  string
+	httpc        *http.Client
 }
 
 // Option adjusts a Client at construction.
@@ -56,6 +57,15 @@ func WithHTTPClient(httpc *http.Client) Option {
 		if httpc != nil {
 			c.httpc = httpc
 		}
+	}
+}
+
+// WithClientSecret makes the client confidential: it proves itself with secret
+// at every call it makes as itself (the code exchange, a refresh, a revocation
+// and a step-up). Without it the client is public and sends no secret.
+func WithClientSecret(secret string) Option {
+	return func(c *Client) {
+		c.clientSecret = secret
 	}
 }
 
@@ -342,9 +352,13 @@ func (c *Client) WebEIDLogin(ctx context.Context, flow string, authToken json.Ra
 
 // StepUp asks the Auth Service to elevate the session. The response is relayed to
 // the caller verbatim: either a redirect to a stronger login or a card-signing
-// challenge.
+// challenge. A confidential client's secret travels in the body, since the
+// Authorization header carries the person's access token.
 func (c *Client) StepUp(ctx context.Context, key *ecdsa.PrivateKey, accessToken string, req StepUpRequest) (json.RawMessage, int, error) {
-	reqBody, err := json.Marshal(req)
+	reqBody, err := json.Marshal(struct {
+		StepUpRequest
+		ClientSecret string `json:"client_secret,omitempty"`
+	}{req, c.clientSecret})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -389,6 +403,11 @@ func (c *Client) dpopDo(ctx context.Context, key *ecdsa.PrivateKey, method, path
 		req.Header.Set("DPoP", proof)
 		if accessToken != "" {
 			req.Header.Set("Authorization", "DPoP "+accessToken)
+		} else if c.clientSecret != "" {
+			// A call without the person's token is one the client makes as itself, so a
+			// confidential client proves itself by HTTP Basic, each part form-encoded
+			// first [RFC 6749 §2.3.1].
+			req.SetBasicAuth(url.QueryEscape(c.clientID), url.QueryEscape(c.clientSecret))
 		}
 		if contentType != "" {
 			req.Header.Set("Content-Type", contentType)

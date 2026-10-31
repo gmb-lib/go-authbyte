@@ -33,6 +33,11 @@ type Configuration struct {
 	// ServiceAudience is this service's own `aud` — inbound tokens must target
 	// it.
 	ServiceAudience string `mapstructure:"service_audience" validate:"required"`
+	// AlsoAcceptedAudiences are further audiences an inbound token may target
+	// instead of ServiceAudience: any one of them suffices. For a service that
+	// answers for several audiences, such as an authority serving several
+	// products' sign-in clients. Empty entries accept nothing.
+	AlsoAcceptedAudiences []string `mapstructure:"also_accepted_audiences"`
 	// ServiceClientID / ServiceClientSecret authenticate outbound
 	// client-credentials requests. Optional for services that never call out.
 	ServiceClientID     string `mapstructure:"service_client_id"`
