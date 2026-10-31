@@ -4,6 +4,44 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.36.0
+
+One behaviour changes: `AuthorizeURL` no longer sends `prompt=login`. Everything else is added.
+
+### Changed
+
+- **`asclient.AuthorizeURL` asks for no fresh sign-in.** It sent `prompt=login` on every sign-in, which an authority
+  that honours `prompt` would turn into a new sign-in at its upstream provider every time, defeating any single
+  sign-on. The requested method still wins without it: the authority refuses a sign-in completed with a method the
+  request did not name. A caller that needs a fresh sign-in passes `MaxAge` of zero both to `AuthorizationURL` and to
+  `ExchangeSignIn`'s check: `prompt` alone is a request, and only the checked authentication time proves it was met.
+
+### Added
+
+- **Sign-ins with an ID token** [OIDC Core §3.1.2.1], [OIDC Core §3.1.3.7]:
+  - `asclient.WithIssuer(issuer)` names the authority's issuer identifier, as its discovery document states it.
+  - `AuthorizationURL(AuthorizationRequest)` builds a redirect that asks for an ID token (`scope=openid`) with the
+    caller's nonce, and `acr_values`, `prompt` and `max_age` when set.
+  - `CheckIssuer(iss)` checks the browser's return names that issuer [RFC 9207 §2.4]; `ErrIssuer` otherwise.
+  - `ExchangeSignIn(ctx, key, code, verifier, IDTokenCheck)` redeems the code and checks the ID token: the issuer,
+    this client as the only audience, a subject and an issue time, expiry, an ES256 signature by a key the authority
+    publishes (fetched from its JWKS and refetched on an unknown key id), the nonce, the method met among the ones
+    named (`IDTokenCheck.ACRValues`), and the authentication time when an age was asked. An ID token that fails returns
+    `ErrIDToken` and no tokens, and the session the exchange opened is revoked; a failed exchange returns its own error,
+    as `ExchangeCode` does. It answers the token's subject, authentication time, method (`acr`), means (`amr`) and
+    session id.
+  - `WebEIDChallengeWithNonce` asks for an ID token from a card sign-in.
+  - `Tokens.IDToken` carries the raw token; read it only through `ExchangeSignIn`.
+
+### Migrating
+
+- **A back-end that signs people in** passes `WithIssuer`, keeps a nonce with each sign-in, builds the redirect with
+  `AuthorizationURL`, checks the return with `CheckIssuer` before redeeming its code, and redeems with
+  `ExchangeSignIn`, establishing its session only when that succeeds. It needs an authority that answers ID tokens
+  and names itself in its returns; until then keep `AuthorizeURL` and `ExchangeCode`.
+- **A back-end that relied on `prompt=login`** for a fresh sign-in passes `MaxAge` of zero to `AuthorizationURL` and to
+  the check, so the answer's authentication time proves it.
+
 ## v0.35.0
 
 Nothing breaks for a caller that already builds on v0.34.0.

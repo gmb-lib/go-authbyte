@@ -15,11 +15,11 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-// TestAuthorizeURLAlwaysForcesLogin proves every authorization redirect carries
-// prompt=login — dropping it would let a live upstream single-sign-on session
-// silently answer with a different login method than the one requested, and the
-// login method carries authorization weight.
-func TestAuthorizeURLAlwaysForcesLogin(t *testing.T) {
+// TestAuthorizeURLAsksForNoFreshSignIn proves the plain authorization redirect
+// leaves prompt out: whether a sign-in must be fresh is the caller's to ask
+// (AuthorizationURL), and the Auth Service refuses a sign-in whose method differs
+// from the one requested whatever the upstream's own session answered.
+func TestAuthorizeURLAsksForNoFreshSignIn(t *testing.T) {
 	c := New("https://public", "https://internal", "client-1", "https://app/callback")
 
 	raw := c.AuthorizeURL("chal-1", "state-1", "")
@@ -35,7 +35,7 @@ func TestAuthorizeURLAlwaysForcesLogin(t *testing.T) {
 	qt.Check(t, qt.Equals(q.Get("code_challenge_method"), "S256"))
 	qt.Check(t, qt.Equals(q.Get("redirect_uri"), "https://app/callback"))
 	qt.Check(t, qt.Equals(q.Get("state"), "state-1"))
-	qt.Check(t, qt.Equals(q.Get("prompt"), "login"))
+	qt.Check(t, qt.IsFalse(q.Has("prompt")))
 	qt.Check(t, qt.Equals(q.Get("acr_values"), ""))
 }
 
