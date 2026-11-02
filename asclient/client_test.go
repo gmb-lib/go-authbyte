@@ -154,18 +154,6 @@ func TestRevokeRetriesWithServerNonce(t *testing.T) {
 	qt.Check(t, qt.Equals(calls, 2))
 }
 
-// A step-up names the session by its refresh token: the Auth Service keeps its
-// own session id to itself.
-func TestAStepUpNamesTheSessionByItsRefreshToken(t *testing.T) {
-	b, err := json.Marshal(StepUpRequest{RefreshToken: "refresh-1", ClientID: "client-1"})
-	qt.Assert(t, qt.IsNil(err))
-
-	var got map[string]any
-	qt.Assert(t, qt.IsNil(json.Unmarshal(b, &got)))
-	qt.Check(t, qt.Equals(got["refresh_token"], any("refresh-1")))
-	qt.Check(t, qt.IsFalse(func() bool { _, ok := got["session_id"]; return ok }()))
-}
-
 // TestTrailingSlashesAreTrimmed proves a base address configured with a trailing
 // slash cannot produce a double-slash path — the proof binds the URL it calls, so
 // a mismatch between what is called and what the Auth Service reconstructs is an
@@ -361,12 +349,12 @@ func TestWithHTTPClientIsHonoured(t *testing.T) {
 	qt.Check(t, qt.IsTrue(ok))
 }
 
-// TestOutboundCarriesCorrelationID proves both call paths — the plain card-login
-// hop and the proof-carrying token/identity hop — forward the correlation id from
-// the request context, so the login and token exchange are joinable to the
-// originating request in the logs. It also proves the header is omitted entirely
-// (not sent empty) when the context carries no id. The channel gives a
-// happens-before between the handler and the assertions so the test is race-clean.
+// TestOutboundCarriesCorrelationID proves the proof-carrying token/identity hop
+// forwards the correlation id from the request context, so the token exchange is
+// joinable to the originating request in the logs. It also proves the header is
+// omitted entirely (not sent empty) when the context carries no id. The channel
+// gives a happens-before between the handler and the assertions so the test is
+// race-clean.
 func TestOutboundCarriesCorrelationID(t *testing.T) {
 	corrCh := make(chan string, 4)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -383,13 +371,8 @@ func TestOutboundCarriesCorrelationID(t *testing.T) {
 
 	c := New(srv.URL, srv.URL, "client-1", "https://app/callback")
 
-	// plainDo path (card-login challenge) forwards the id on the context.
+	// The identity read (proof of possession) forwards the id on the context.
 	ctx := propagation.WithCorrelationID(context.Background(), "corr-xyz")
-	_, _, err := c.WebEIDChallenge(ctx, "chal", "state")
-	qt.Assert(t, qt.IsNil(err))
-	qt.Check(t, qt.Equals(<-corrCh, "corr-xyz"))
-
-	// dpopDo path (identity, proof of possession) forwards it too.
 	key, err := GenerateKey()
 	qt.Assert(t, qt.IsNil(err))
 	_, err = c.Identity(ctx, key, "access-token")
@@ -397,7 +380,7 @@ func TestOutboundCarriesCorrelationID(t *testing.T) {
 	qt.Check(t, qt.Equals(<-corrCh, "corr-xyz"))
 
 	// No id on the context → the header is omitted, never sent empty.
-	_, _, err = c.WebEIDChallenge(context.Background(), "chal", "state")
+	_, err = c.Identity(context.Background(), key, "access-token")
 	qt.Assert(t, qt.IsNil(err))
 	qt.Check(t, qt.Equals(<-corrCh, "<absent>"))
 }

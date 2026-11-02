@@ -49,9 +49,8 @@ func recordingAuthService(t *testing.T) (*httptest.Server, <-chan seen) {
 }
 
 // A confidential client proves itself at every call it makes as itself: by HTTP
-// Basic where the request carries no access token (the token endpoint and
-// revocation), and in the body of the step-up, whose Authorization header
-// carries the person's access token. The secret never travels in the form.
+// Basic at the token endpoint and at revocation. The secret never travels in the
+// form.
 func TestAConfidentialClientProvesItselfAtEveryCall(t *testing.T) {
 	srv, calls := recordingAuthService(t)
 	c := New("https://public", srv.URL, "client-1", "https://app/callback", WithClientSecret("s3cret"))
@@ -73,16 +72,6 @@ func TestAConfidentialClientProvesItselfAtEveryCall(t *testing.T) {
 		qt.Check(t, qt.Equals(got.basicSecret, "s3cret"))
 		qt.Check(t, qt.Equals(got.form.Get("client_secret"), ""), qt.Commentf("%s sends the secret in the form too", path))
 	}
-
-	_, _, err = c.StepUp(ctx, key, "access-1", StepUpRequest{RefreshToken: "refresh-1", ClientID: "client-1", Method: "webEid"})
-	qt.Assert(t, qt.IsNil(err))
-
-	got := <-calls
-	qt.Check(t, qt.Equals(got.path, "/step-up"))
-	qt.Check(t, qt.Equals(got.authorization, "DPoP access-1"))
-	qt.Check(t, qt.Equals(got.body["client_secret"], any("s3cret")))
-	qt.Check(t, qt.Equals(got.body["client_id"], any("client-1")))
-	qt.Check(t, qt.Equals(got.body["refresh_token"], any("refresh-1")))
 }
 
 // The client id and the secret are each form-encoded before the Basic encoding
@@ -114,10 +103,5 @@ func TestAPublicClientSendsNoSecret(t *testing.T) {
 	got := <-calls
 	qt.Check(t, qt.IsFalse(got.hasBasic))
 	qt.Check(t, qt.Equals(got.authorization, ""))
-
-	_, _, err = c.StepUp(ctx, key, "access-1", StepUpRequest{RefreshToken: "refresh-1", ClientID: "client-1", Method: "webEid"})
-	qt.Assert(t, qt.IsNil(err))
-	got = <-calls
-	_, has := got.body["client_secret"]
-	qt.Check(t, qt.IsFalse(has))
+	qt.Check(t, qt.Equals(got.form.Get("client_secret"), ""))
 }

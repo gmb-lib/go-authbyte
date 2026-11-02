@@ -172,8 +172,7 @@ owns instrumenting it.
 
 A back-end the authority registers as a **confidential** client passes its secret
 with `WithClientSecret`: the client then proves itself at every call it makes as
-itself — by HTTP Basic on the code exchange, a refresh and a revocation, and in the
-body of a step-up, whose `Authorization` header carries the person's access token.
+itself — by HTTP Basic on the code exchange, a refresh and a revocation.
 Without it the client is public and sends no secret, as before.
 
 A sign-in that asks for an **ID token** proves itself to the back-end too. The
@@ -226,12 +225,9 @@ redirect = as.BrowserLogoutURL(postLogoutURL, loginMethod)
 `AuthorizeURL` asks for no fresh sign-in: the authority refuses a sign-in completed
 with a method the request did not name, so the named method still wins.
 
-`WebEIDChallenge` / `WebEIDLogin` drive an ID-card login (the card challenge is
-answered in the browser; the session key is proven at the token exchange;
-`WebEIDChallengeWithNonce` asks for an ID token, redeemed with `ExchangeSignIn`), and
-`StepUp` asks the authority to elevate an existing session to a stronger method,
-naming it by its refresh token (`StepUpRequest.RefreshToken`). A step-up's code
-exchange answers no refresh token: keep the one the session holds. The refresh
+An ID-card sign-in is a redirect sign-in like any other: the authority reads the card
+on its own sign-in page. A session's method is fixed by its sign-in; a back-end that
+needs another proof starts a fresh sign-in naming the way it wants. The refresh
 token is answered to the back-end only and is bound there to this client and the
 session key; it never belongs in a browser address, which is why the sign-out runs
 `Revoke` before the browser leaves.

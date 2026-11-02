@@ -1,9 +1,8 @@
 // Package asclient drives the Auth Service from a confidential back-end on a
 // user's behalf: it builds the browser authorization redirect, redeems the
 // authorization code for a sender-constraint-bound token, refreshes it, reads the
-// user's identity, drives a card login, and requests a step-up. Every server-side
-// call proves possession of a per-session key, retrying once on a fresh server
-// nonce.
+// user's identity and ends the session. Every server-side call proves possession
+// of a per-session key, retrying once on a fresh server nonce.
 //
 // This is the back-end half of a browser login. The key it proves belongs to one
 // user session and is held by the calling service — the browser never sees a
@@ -35,8 +34,8 @@ import (
 const DefaultTimeout = 30 * time.Second
 
 // Client is a confidential back-end client of the Auth Service. The browser-facing
-// authorization redirect uses the public address; the server-side token, identity,
-// and step-up calls use the in-network address, which is also the proof URL bound
+// authorization redirect uses the public address; the server-side token, identity
+// and revocation calls use the in-network address, which is also the proof URL bound
 // into each of those calls (so it matches what the Auth Service reconstructs).
 type Client struct {
 	publicURL    string // browser-facing authorization redirect
@@ -64,8 +63,8 @@ func WithHTTPClient(httpc *http.Client) Option {
 }
 
 // WithClientSecret makes the client confidential: it proves itself with secret
-// at every call it makes as itself (the code exchange, a refresh, a revocation
-// and a step-up). Without it the client is public and sends no secret.
+// at every call it makes as itself (the code exchange, a refresh and a
+// revocation). Without it the client is public and sends no secret.
 func WithClientSecret(secret string) Option {
 	return func(c *Client) {
 		c.clientSecret = secret
@@ -155,18 +154,6 @@ type Identity struct {
 	PermittedFlows []string `json:"permitted_flows"`
 }
 
-// StepUpRequest asks the Auth Service to elevate an existing session to a
-// stronger login method. The session is named by its refresh token, together with
-// the client the token was issued to.
-type StepUpRequest struct {
-	RefreshToken  string `json:"refresh_token"`
-	ClientID      string `json:"client_id"`
-	Method        string `json:"method"`
-	CodeChallenge string `json:"code_challenge"`
-	RedirectURI   string `json:"redirect_uri"`
-	State         string `json:"state"`
-}
-
 // AuthorizeURL builds the browser-facing authorization redirect for the
 // authorization-code flow, asking for no ID token. acrValues, when set, names the
 // sign-in methods the person may use, in the Auth Service's own method names.
@@ -239,9 +226,7 @@ func (c *Client) Revoke(ctx context.Context, key *ecdsa.PrivateKey, refreshToken
 	return nil
 }
 
-// ExchangeCode redeems an authorization code for a token bound to key. A step-up's
-// exchange answers no refresh token (RefreshToken is empty): keep the one the
-// session holds.
+// ExchangeCode redeems an authorization code for a token bound to key.
 func (c *Client) ExchangeCode(ctx context.Context, key *ecdsa.PrivateKey, code, verifier string) (*Tokens, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
@@ -298,103 +283,6 @@ func (c *Client) Identity(ctx context.Context, key *ecdsa.PrivateKey, accessToke
 	}
 
 	return &id, nil
-}
-
-// WebEIDChallenge begins an ID-card login: it requests a card challenge and the
-// flow handle to complete it with. No proof of possession is made yet — the
-// per-session key is proven only at the final token exchange. Returns the card
-// challenge nonce (the browser signs it with the card) and the flow handle.
-func (c *Client) WebEIDChallenge(ctx context.Context, codeChallenge, state string) (nonce, flow string, err error) {
-	return c.webEIDChallenge(ctx, codeChallenge, state, "")
-}
-
-// WebEIDChallengeWithNonce begins an ID-card login that asks for an ID token, as
-// AuthorizationURL does for a redirect: the token the code is exchanged for
-// carries idTokenNonce back. Redeem the code with ExchangeSignIn.
-func (c *Client) WebEIDChallengeWithNonce(ctx context.Context, codeChallenge, state, idTokenNonce string) (nonce, flow string, err error) {
-	return c.webEIDChallenge(ctx, codeChallenge, state, idTokenNonce)
-}
-
-func (c *Client) webEIDChallenge(ctx context.Context, codeChallenge, state, idTokenNonce string) (nonce, flow string, err error) {
-	q := url.Values{}
-	q.Set("client_id", c.clientID)
-	q.Set("code_challenge", codeChallenge)
-	q.Set("code_challenge_method", "S256")
-	q.Set("redirect_uri", c.redirectURI)
-	q.Set("state", state)
-	if idTokenNonce != "" {
-		q.Set("scope", scopeOpenID)
-		q.Set("nonce", idTokenNonce)
-	}
-
-	body, status, err := c.plainDo(ctx, http.MethodGet, "/webeid/challenge?"+q.Encode(), "", nil)
-	if err != nil {
-		return "", "", err
-	}
-	if status != http.StatusOK {
-		return "", "", &Error{Status: status, Body: string(body)}
-	}
-
-	var out struct {
-		Nonce string `json:"nonce"`
-		State string `json:"state"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return "", "", fmt.Errorf("asclient: decode challenge response: %w", err)
-	}
-
-	return out.Nonce, out.State, nil
-}
-
-// WebEIDLogin submits the card authentication token for a flow and returns the
-// authorization code to redeem at the token endpoint. The token is opaque here
-// and forwarded verbatim.
-func (c *Client) WebEIDLogin(ctx context.Context, flow string, authToken json.RawMessage) (code string, err error) {
-	reqBody, err := json.Marshal(struct {
-		State     string          `json:"state"`
-		AuthToken json.RawMessage `json:"authToken"`
-	}{State: flow, AuthToken: authToken})
-	if err != nil {
-		return "", err
-	}
-
-	body, status, err := c.plainDo(ctx, http.MethodPost, "/webeid/login", "application/json", reqBody)
-	if err != nil {
-		return "", err
-	}
-	if status != http.StatusOK {
-		return "", &Error{Status: status, Body: string(body)}
-	}
-
-	var out struct {
-		Code  string `json:"code"`
-		State string `json:"state"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return "", fmt.Errorf("asclient: decode login response: %w", err)
-	}
-
-	return out.Code, nil
-}
-
-// StepUp asks the Auth Service to elevate the session. The response is relayed to
-// the caller verbatim: either a redirect to a stronger login or a card-signing
-// challenge. A confidential client's secret travels in the body, since the
-// Authorization header carries the person's access token.
-func (c *Client) StepUp(ctx context.Context, key *ecdsa.PrivateKey, accessToken string, req StepUpRequest) (json.RawMessage, int, error) {
-	reqBody, err := json.Marshal(struct {
-		StepUpRequest
-		ClientSecret string `json:"client_secret,omitempty"`
-	}{req, c.clientSecret})
-	if err != nil {
-		return nil, 0, err
-	}
-	body, status, err := c.dpopDo(ctx, key, http.MethodPost, "/step-up", accessToken, "application/json", reqBody)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return json.RawMessage(body), status, nil
 }
 
 // setCorrelation attaches the correlation id (when the context carries one) so the
@@ -463,36 +351,6 @@ func (c *Client) dpopDo(ctx context.Context, key *ecdsa.PrivateKey, method, path
 	}
 
 	return nil, 0, errors.New("asclient: proof request failed after nonce retry")
-}
-
-// plainDo performs a request to the Auth Service with no proof of possession (the
-// card-login challenge + login hops, which are proven later at the token
-// exchange). path may carry a query string.
-func (c *Client) plainDo(ctx context.Context, method, path, contentType string, body []byte) ([]byte, int, error) {
-	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, c.internalURL+path, reader)
-	if err != nil {
-		return nil, 0, err
-	}
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
-	}
-	setCorrelation(ctx, req)
-
-	resp, err := c.httpc.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	respBody, readErr := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if readErr != nil {
-		return nil, 0, readErr
-	}
-
-	return respBody, resp.StatusCode, nil
 }
 
 // Error is a non-2xx response from the Auth Service.
