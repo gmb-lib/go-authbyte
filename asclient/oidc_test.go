@@ -278,28 +278,3 @@ func TestASignInCheckWithoutItsInputsRefuses(t *testing.T) {
 	_, _, err = c.ExchangeSignIn(context.Background(), key, "code-1", "verifier-1", IDTokenCheck{})
 	qt.Check(t, qt.ErrorIs(err, ErrIDToken))
 }
-
-// A card sign-in that asks for an ID token says so to the card door too, with
-// the nonce the token must carry back.
-func TestTheCardChallengeCarriesTheNonce(t *testing.T) {
-	var got url.Values
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = r.URL.Query()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"nonce":"card-challenge","state":"flow-1"}`))
-	}))
-	t.Cleanup(srv.Close)
-	c := New("https://public", srv.URL, "client-1", "https://app/callback")
-
-	challenge, flow, err := c.WebEIDChallengeWithNonce(context.Background(), "chal-1", "state-1", "n-1")
-	qt.Assert(t, qt.IsNil(err))
-	qt.Check(t, qt.Equals(challenge, "card-challenge"))
-	qt.Check(t, qt.Equals(flow, "flow-1"))
-	qt.Check(t, qt.Equals(got.Get("scope"), "openid"))
-	qt.Check(t, qt.Equals(got.Get("nonce"), "n-1"))
-
-	_, _, err = c.WebEIDChallenge(context.Background(), "chal-1", "state-1")
-	qt.Assert(t, qt.IsNil(err))
-	qt.Check(t, qt.IsFalse(got.Has("scope")))
-	qt.Check(t, qt.IsFalse(got.Has("nonce")))
-}

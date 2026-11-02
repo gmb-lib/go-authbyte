@@ -4,6 +4,19 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.37.0
+
+A breaking change: the client's step-up and card sign-in calls are removed, because the authority no longer serves
+them.
+
+### Removed
+
+- **Breaking change: `asclient.Client.StepUp` and `asclient.StepUpRequest`.** The authority has no step-up any more;
+  a session's method is fixed by its sign-in. A back-end that needs another proof starts a fresh sign-in naming the
+  way it wants (`AuthorizationURL` with `ACRValues`) and redeems it with `ExchangeSignIn`, which makes a new session.
+- **Breaking change: `WebEIDChallenge`, `WebEIDChallengeWithNonce` and `WebEIDLogin`.** The authority reads the ID
+  card on its own sign-in page, so a card sign-in is a redirect sign-in naming `webEid`, like any other way.
+
 ## v0.36.0
 
 One behaviour changes: `AuthorizeURL` no longer sends `prompt=login`. Everything else is added.
