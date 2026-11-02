@@ -4,6 +4,39 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.38.0
+
+One package is added; nothing that exists changes.
+
+### Added
+
+- **`apikeys`: API keys for programs** — an integration's or an assistant's own key, made here, stored only as an
+  argon2id hash [RFC 9106 §3.1], and checked behind a rate limit and a cap on concurrent derives:
+  - `NewScheme(Config)` names a key family: its scheme (the key's first part), the parameters keys are minted with
+    (19 MiB, two passes, one lane by default, and never weaker than that), and the floor and ceiling a stored
+    string's parameters must sit between (the defaults, and the second recommended option of [RFC 9106 §4]).
+  - `Scheme.Mint()` makes a key `<scheme>_<lookup>_<secret>`: a lookup part of 40 random bits in Crockford's Base32,
+    stored in clear and held unique by the store; a secret of 192 random bits in base64url [RFC 4648 §5], never
+    stored; and the PHC string to store in its place. `Minted.Key` prints, marshals and logs as `[redacted]`;
+    `Reveal` returns it.
+  - `Scheme.NewVerifier(lookup, VerifierConfig)` and `Verifier.Verify(ctx, caller, key)` check a presented key: the
+    caller's limit first (a `MemoryLimiter` of 60 attempts a minute unless another `Limiter` is given; the caller
+    must be a non-empty identity the client cannot choose, such as the connection's address), then the key's shape,
+    the lookup, a derive slot (4 at once by default, refused at once when full), one derive and a constant-time
+    comparison. A wrong, an unknown and a malformed key each cost the same one derive.
+  - Stored strings are read strictly; one that is malformed or outside the floor and ceiling is `ErrStoredHash`, never
+    a panic, and the key is not accepted. A key stored below the scheme's current parameters in any field verifies
+    and hands back `Result.Rehash`, raised where below and lowered nowhere, with `Result.Replaces`, the stored string
+    it replaces.
+  - An optional success cache (`CacheTTL`, `CacheSize`) for services that check a key on every request; an entry is
+    bound to the stored string it passed against, and the lookup still runs on every check.
+  - `ErrInvalid`, `ErrLimited`, `ErrBusy`, `ErrStoredHash`, `ErrUnavailable`; `HTTPStatus(err)` maps them to 401, 429
+    [RFC 6585 §4], 503 [RFC 9110 §15.6.4] (also for a check cut short by its context) and 500, and
+    `RetryAfter(err)` gives the delay for `Retry-After`
+    [RFC 9110 §10.2.3].
+- **`golang.org/x/crypto` is now a direct dependency**, at the version already in the module graph (v0.58.0); only its
+  `argon2` package is imported.
+
 ## v0.37.0
 
 A breaking change: the client's step-up and card sign-in calls are removed, because the authority no longer serves

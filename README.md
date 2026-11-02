@@ -466,9 +466,65 @@ if err := keeper.Ready(); err != nil { /* degraded: the chart lifts nothing */ }
   *declared is checked* rule skips them, since they are read from the viewer's
   reach rather than checked on a route.
 
+### API keys for machines and assistants (`apikeys`)
+
+A service that hands a program its own key — an integration, an assistant — makes
+the key here, stores only its hash, and checks a presented key with the same work
+whether it is wrong, unknown or malformed:
+
+```go
+scheme, _ := apikeys.NewScheme(apikeys.Config{Scheme: "ak"}) // argon2id at 19 MiB, t=2, p=1
+
+k, _ := scheme.Mint()
+store(k.Lookup, k.Hash)  // keep these two; nothing else about the key is kept
+show(k.Key.Reveal())     // once, to its holder; k.Key prints and marshals as [redacted]
+
+v, _ := scheme.NewVerifier(lookupStored, apikeys.VerifierConfig{}) // limit and cap on by default
+res, err := v.Verify(ctx, connectionAddress, presented)
+if err != nil {
+	status := apikeys.HTTPStatus(err) // 401, 429, 503 or 500
+	if after, ok := apikeys.RetryAfter(err); ok { /* Retry-After */ }
+}
+if res.Rehash != "" { storeIfStill(res.Lookup, res.Replaces, res.Rehash) } // below the current parameters
+```
+
+- **A key** reads `<scheme>_<lookup>_<secret>`: the lookup part (8 characters of
+  Crockford's Base32, 40 random bits) is stored in clear to find the key by, and the
+  store holds it unique (mint again on a clash); the secret (32 characters of
+  base64url, 192 random bits) is never stored. Only an argon2id hash of the secret
+  is, as a PHC string, never weaker than 19 MiB and two passes.
+- **A check, in order:** the caller's rate limit (60 attempts a minute by default,
+  successes included, which suits keys exchanged now and then; a service checking a
+  key on every request gives a higher one); the key's shape, its length first; the
+  lookup; a derive slot (4 at once by default, a check past it is refused at once);
+  one derive; a constant-time comparison. A wrong secret, an unknown or revoked key
+  and a malformed one each pay exactly one derive, and an unknown key can never pass.
+- **The caller** is what the limit is kept by, so it is something a client cannot
+  choose: the connection's address (an IPv6 client by its /64), never a forwarded-for
+  header the service does not set itself. An empty one is refused. Once the limiter's
+  table is full, callers never seen before share one allowance: its memory and the
+  derives it lets through stay bounded under a flood, and new callers wait while it
+  lasts. Lookups run outside the derive cap; the store's pool and the deadline of the
+  `ctx` given to `Verify` bound them.
+- **A stored string is read strictly**: one spelling, argon2id version 19, a salt of
+  16 to 64 bytes, a 32-byte tag, and parameters between the scheme's floor and its
+  ceiling. A corrupt or tampered one is `ErrStoredHash` — neither a panic nor a cheap
+  check — and the key is not accepted; it answers 500 and is the service's alarm.
+- **Revocation counts at once**: the lookup runs on every check, and a revoked or
+  replaced key is simply not found. A service that checks a key on every request
+  may turn on a success cache (`CacheTTL`); an entry is bound to the stored string
+  it passed against and holds a digest of the secret, never the secret.
+- **Raising the parameters**: set the new ones as `Params`; the floor stays at the
+  defaults, so each key stored below the new ones still verifies and hands back
+  `Result.Rehash`, every field raised to the new value and none lowered. Store it only
+  where the store still holds `Result.Replaces`, so a key changed in between is never
+  overwritten. While old stored strings remain, an unknown key's check costs what a
+  key at the new parameters costs, not what an old one does.
+
 ## Packages
 
 ```
+apikeys/      API keys for programs: mint, store only an argon2id hash, check behind a limit and a cap
 asclient/     Confidential authorization-code browser login (PKCE + per-session proof)
 authclient/   Configuration, Client, Azugo middleware, outbound calls
 chart/        A service's copy of who is below whom in a tenant's chart of authority
