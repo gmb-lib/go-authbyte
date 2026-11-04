@@ -48,6 +48,10 @@ type Error struct {
 	Status int
 	// Body is the answer's body, unparsed.
 	Body string
+	// RetryAfter is the answer's Retry-After header as it arrived, empty when
+	// it had none: a refusal for load (429, 503) says when to ask again, and a
+	// caller relaying it passes that on [RFC 9110 §10.2.3].
+	RetryAfter string
 }
 
 // Error states the fact and nothing else. The body can carry another service's

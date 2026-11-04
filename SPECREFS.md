@@ -16,6 +16,7 @@ is the pin: an IETF RFC is never revised in place, and a revision gets a new num
 | IETF RFC 7519 | — | JSON Web Token: the audience claim an inbound token is checked against (§4.1.3). |
 | IETF RFC 7636 | — | Proof Key for Code Exchange: the verifier and challenge the client package generates for an authorization-code flow. |
 | IETF RFC 8176 | — | Authentication Method Reference values: the means of authentication an ID token's `amr` names (§2). |
+| IETF RFC 8693 | — | OAuth 2.0 Token Exchange: the request `authclient.ExchangeKey` sends (§2.1), and the absolute URI a token type of this library's own may be (§3), `apikeys.TokenType`. |
 | IETF RFC 9106 | — | Argon2: the inputs and output of argon2id that the `apikeys` package derives an API key's stored hash with (§3.1), and the second recommended parameter option it uses as its default ceiling (§4). |
 | IETF RFC 9110 | — | HTTP semantics: `503 Service Unavailable` (§15.6.4) for a check refused for want of a derive slot or a reachable key store, and `Retry-After` (§10.2.3) for the delay a refusal for load carries. |
 | IETF RFC 9207 | — | Authorization server issuer identification: the `iss` parameter the client package checks on the browser's return (§2.4). |

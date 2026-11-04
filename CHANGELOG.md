@@ -4,6 +4,25 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.39.0
+
+Additions only; nothing that exists changes.
+
+### Added
+
+- **`authclient.ExchangeKey(ctx, audience, scope, key)`**: exchanges an API key a caller presented for a token
+  toward `audience` [RFC 8693 §2.1], the client authenticating with its own credentials and DPoP proof as for every
+  exchange, the key named with its own type. It answers the token and the lifetime the authority gave it and caches
+  nothing; the token is bound to the client's key, so `DoWithToken` presents it. An empty key is refused before
+  anything is sent.
+- **`authclient.Error.RetryAfter`**: the `Retry-After` header of a refusal from the token endpoint, empty when it had
+  none, so a caller can pass a refusal for load on as it came [RFC 9110 §10.2.3].
+- **`apikeys.TokenType`** (`urn:gmb:params:oauth:token-type:api-key`): the subject token type that names a key in a
+  token exchange, for the client that sends one and the authority that checks it [RFC 8693 §3].
+- **`Scheme.Presented(key)`**: reads a presented key by its shape alone (scheme, lengths, alphabets) and holds it as a
+  `Secret`, deriving nothing and looking nothing up; every refusal is `ErrInvalid` and names nothing of the input. For
+  a service that hands keys on to be checked elsewhere.
+
 ## v0.38.0
 
 One package is added; nothing that exists changes.

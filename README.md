@@ -521,6 +521,27 @@ if res.Rehash != "" { storeIfStill(res.Lookup, res.Replaces, res.Rehash) } // be
   overwritten. While old stored strings remain, an unknown key's check costs what a
   key at the new parameters costs, not what an old one does.
 
+**A service that receives a key but does not check it** — a door that hands it on
+to the authority, which keeps the stored hashes — reads its shape and exchanges it
+for a token toward the service it calls:
+
+```go
+key, err := scheme.Presented(header) // shape only: nothing derived, nothing looked up
+if err != nil { /* 401: it can never be a key of this family */ }
+
+tok, ttl, err := ac.ExchangeKey(ctx, "svc:api", "projects/task:view", key)
+var refused *authclient.Error
+if errors.As(err, &refused) && refused.RetryAfter != "" { /* the authority's limit: pass Retry-After on */ }
+res, err := ac.DoWithToken(ctx, "svc:api", tok, http.MethodGet, url, nil, nil)
+```
+
+- **The exchange** is RFC 8693's, with the key as the subject token and
+  `apikeys.TokenType` (`urn:gmb:params:oauth:token-type:api-key`) as its type; the
+  authority checks the key as above. The token is bound to the client's own DPoP key,
+  so `DoWithToken` presents it.
+- **Nothing is cached** by `ExchangeKey`: how long a token made from a key is reused
+  is the calling service's decision, since the key can be taken away at any moment.
+
 ## Packages
 
 ```
