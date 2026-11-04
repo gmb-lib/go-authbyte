@@ -246,7 +246,7 @@ func (c *Client) postTokenForm(ctx context.Context, form url.Values) (string, ti
 		// request — not a failure to reach it. The caller is handed both, so it
 		// can say which happened instead of reporting the worse one.
 		if resp.StatusCode/100 != 2 {
-			return "", 0, &Error{Hop: HopToken, Status: resp.StatusCode, Body: string(body)}
+			return "", 0, &Error{Hop: HopToken, Status: resp.StatusCode, Body: string(body), RetryAfter: resp.Header.Get("Retry-After")}
 		}
 
 		var tr tokenResponse
