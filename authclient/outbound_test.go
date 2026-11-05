@@ -2,6 +2,7 @@ package authclient
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-quicktest/qt"
 )
@@ -133,6 +135,48 @@ func TestAnUnauthorizedWithNoChallengeIsARefusal(t *testing.T) {
 	var refused *Error
 	qt.Assert(t, qt.IsTrue(errors.As(err, &refused)))
 	qt.Assert(t, qt.Equals(refused.Status, http.StatusUnauthorized))
+}
+
+// A fresh exchange asks the authority every time and keeps nothing: a token the
+// authority has stopped exchanging (a connection signed out) gets no pass from an
+// earlier answer, and the cached lane, asked after it, still asks the authority.
+func TestAFreshExchangeAsksEveryTimeAndKeepsNothing(t *testing.T) {
+	var asked atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := asked.Add(1)
+		if n == 3 {
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "pass-" + string(rune('0'+n)), "expires_in": 300})
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+	ctx := context.Background()
+	// A token whose expiry can be read, an hour away: one the cached lane would keep
+	// an answer for.
+	enc := func(v any) string { b, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(b) }
+	appToken := enc(map[string]any{"alg": "ES256", "typ": "at+jwt"}) + "." +
+		enc(map[string]any{"sub": "a-person", "exp": time.Now().Add(time.Hour).Unix()}) + ".c2ln"
+
+	first, err := c.ExchangeDelegatedToken(ctx, "svc:target", "projects/task:view", appToken)
+	qt.Assert(t, qt.IsNil(err))
+	second, err := c.ExchangeDelegatedToken(ctx, "svc:target", "projects/task:view", appToken)
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.Equals(first, "pass-1"))
+	qt.Check(t, qt.Equals(second, "pass-2"), qt.Commentf("asked again, not answered from the first"))
+
+	_, err = c.ExchangeDelegatedToken(ctx, "svc:target", "projects/task:view", appToken)
+	var refused *Error
+	qt.Assert(t, qt.IsTrue(errors.As(err, &refused)), qt.Commentf("the authority's refusal reaches the caller"))
+	qt.Check(t, qt.Equals(refused.Status, http.StatusUnauthorized))
+
+	tok, err := c.AcquireDelegatedToken(ctx, "svc:target", "projects/task:view", "", appToken)
+	qt.Assert(t, qt.IsNil(err))
+	qt.Check(t, qt.Equals(tok, "pass-4"), qt.Commentf("nothing kept for the cached lane either"))
+	qt.Check(t, qt.Equals(asked.Load(), int32(4)))
 }
 
 // What the error SAYS must not repeat what the service sent. The body can carry
