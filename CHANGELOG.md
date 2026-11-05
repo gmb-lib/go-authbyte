@@ -4,6 +4,17 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.40.0
+
+Additions only; nothing that exists changes.
+
+### Added
+
+- **`authclient.ExchangeDelegatedToken(ctx, audience, scope, subjectToken)`**: the on-behalf exchange of
+  `AcquireDelegatedToken`, asking the authority every time and keeping nothing. For a subject token the authority may
+  stop exchanging while it is still within its lifetime, such as an AI app's token whose connection was signed out: a
+  token kept from an earlier answer would outlive that decision. A refusal is an `*Error`, as on every lane.
+
 ## v0.39.0
 
 Additions only; nothing that exists changes.

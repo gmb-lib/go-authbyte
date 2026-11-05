@@ -118,6 +118,21 @@ func (c *Client) AcquireDelegatedToken(ctx context.Context, audience, scope, sub
 	return tok, nil
 }
 
+// ExchangeDelegatedToken exchanges subjectToken for a token toward audience
+// asking scope, as AcquireDelegatedToken does, but asks the authority every time
+// and keeps nothing: for a subject token the authority may stop exchanging while
+// it is still within its lifetime (an AI app's connection signed out), where a
+// token kept from an earlier answer would outlive that decision. A refusal is an
+// *Error, as on every lane.
+func (c *Client) ExchangeDelegatedToken(ctx context.Context, audience, scope, subjectToken string) (string, error) {
+	tok, _, err := c.requestDelegatedToken(ctx, audience, scope, subjectToken)
+	if err != nil {
+		return "", err
+	}
+
+	return tok, nil
+}
+
 // subjectTokenExpiry reads the expiry a subject token states. The signature is
 // not checked, and need not be: the value only shortens how long a token
 // already exchanged for it is reused, never grants anything, and it is read from
