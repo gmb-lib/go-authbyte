@@ -4,6 +4,20 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.41.0
+
+Additions only; nothing that exists changes.
+
+### Added
+
+- **The AI apps connected as assistants, in `asclient`**, each call made with the signed-in person's own token and
+  the session's key, as `Identity` is: `OwnConnections` (the person's own assistants in the workspace their token
+  names, each with its apps: `ID`, `App`, `ConnectedAt`, `LastUsed`, nil until a call went through),
+  `SignOutOwnConnection(id)`, and, for a workspace's administrator, `AssistantConnections(assistant)`,
+  `SignOutAssistantConnection(assistant, id)` and `EndAssistantConnections(assistant)`. A refusal is an `*Error`
+  with the authority's own body; a sign-out is done only on `204`. A name or key that is empty, or would leave its
+  path segment, is refused before anything is sent.
+
 ## v0.40.0
 
 Additions only; nothing that exists changes.

@@ -113,6 +113,12 @@ request context) are the on-behalf-of counterparts of `PostJSON` and
 delegation chain; `claims.Claims.Delegated()` reports whether a received token
 was minted on behalf of its subject.
 
+These lanes keep a delegated token for its lifetime and hand it out again.
+**`ExchangeDelegatedToken`** asks the authority every time and keeps nothing: for
+a subject token the authority may stop exchanging while it is still within its
+lifetime (an AI app's, once its connection is signed out), where a kept answer
+would outlive that decision.
+
 **A token the caller minted itself** — an authorization server asking a
 service about the person it is signing in, with a token it signed for that one
 call — goes through `DoWithToken`, with no token fetched. The token must be
@@ -235,6 +241,24 @@ session key; it never belongs in a browser address, which is why the sign-out ru
 model — for labelling the session it already holds, never for authorizing anything.
 `SerialFromToken` answers its identity code in the spelling codes are compared in
 (`identitycode.Key`), ready to match against a record somebody else wrote.
+
+**The AI apps connected as a person's assistants** are read and signed out with
+the person's own token and the session's key, at the authority's identity door:
+
+```go
+own, err := as.OwnConnections(ctx, key, accessToken)          // the person's own assistants, each with its apps
+err = as.SignOutOwnConnection(ctx, key, accessToken, own[0].Connections[0].ID)
+
+// An administrator of the workspace the token names, for any one assistant:
+apps, err := as.AssistantConnections(ctx, key, accessToken, assistantKey)
+err = as.SignOutAssistantConnection(ctx, key, accessToken, assistantKey, apps[0].ID)
+err = as.EndAssistantConnections(ctx, key, accessToken, assistantKey) // every app, as its removal asks
+```
+
+A connection is named by its public name, never a session's key or a token. A
+refusal is an `*asclient.Error` carrying the authority's own body, to relay as it
+came; a name or key that is empty, or that a path would read as more than one
+segment, is refused before anything is sent.
 
 A code exchange also hands back `Tokens.Capabilities` when the login captured a
 signing-capability set: the signing identity, its certificate, the paired
