@@ -4,6 +4,33 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.42.0
+
+Additions only; the output of `Set.Section` and of the `permissions` command is unchanged for a Set that declares
+no levels.
+
+### Added
+
+- **Levels on a `permissions.Set`**: `Set.AddLevels(...permissions.Rung)` attaches the rungs of a service's own role
+  ladder (a scope group, a level name, an optional one-sentence description), each checked for shape (one lower-case
+  word, no `:`, `/` or space) and refused when named twice; `Set.Levels()` answers them. A Set with levels renders them
+  as `roles` in `Section()`.
+- **One declaration document for several Sets**: `permissions.Declaration(sets...)` renders one service entry per
+  Set, in the order given, with `roles` left out when a Set has none and `permissions` always present, the same
+  bytes every time, and an error for two Sets under one service key; `permissions.ServiceKeys(sets...)` answers the
+  keys.
+- **The `declare` package**: `declare.New(doer, address, audience, config, sets...)` answers a task (`Name`, `Start`,
+  `Stop`) that sends the declaration to the membership register as the service itself, `POST /api/v1/declarations`,
+  with a token for the register's audience carrying exactly one `declare:<key>` scope per key in the document.
+  `Start` returns at once. A failed call, an outage answer or a `429` is retried with a pause that doubles from
+  `FirstPause` to `LongestPause`; a `200` is repeated after `Repeat`; any other answer is a refusal, reported as a
+  `*declare.Error` with the status, the problem code and the detail, and retried only after `LongestPause`. The
+  defaults are `DefaultFirstPause` (1 s), `DefaultLongestPause` (1 min) and `DefaultRepeat` (1 h).
+
+### Changed
+
+- The module is built with Go 1.27.4.
+
 ## v0.41.0
 
 Additions only; nothing that exists changes.

@@ -367,8 +367,16 @@ v1.Get("/config", gate.Member(permissions.Levels("projects", "read"), r.configGe
   act on anybody's reads `perm.HeldBy(ctx.User())`.
 - **The register document**: `Section()` renders the list as the membership
   register's configuration section, and `Command()` is a `permissions` command
-  that prints it, for a deployment to apply. The service makes no call to register
-  itself.
+  that prints it, for a deployment to apply; neither makes a call. A service that
+  declares itself when it starts uses `declare` (below).
+- **Levels**: `Set.AddLevels(permissions.Rung{Group: "projects", Level: "read"}, …)`
+  attaches the rungs of the service's own role ladder (a scope group and a level
+  name, one lower-case word each, an optional one-sentence description). A
+  level named twice is an error. A Set with levels renders them as `roles` in its
+  section; a Set with none renders exactly what it always did.
+- **One document for several Sets**: `permissions.Declaration(a, b)` renders one
+  service entry per Set, in the order given, the same bytes every time, and
+  refuses two Sets under one key; `permissions.ServiceKeys(a, b)` answers the keys.
 - **Each permission says** its `Class` (whether it changes what others may do, or
   is a family of rights, one per field),
   its `Plane` (granted to the whole `Tenant`, on one `Object` the service
@@ -407,6 +415,35 @@ when a route checks one the list lacks, when a check naming an undeclared act do
 not stop the service, when an act on your own work (`editOwn`) has no act on
 anybody's (`edit`) beside it, and when the register document carries a property the
 register would refuse.
+
+### Telling the register what the service enforces, when it starts (`declare`)
+
+A task a service adds at start that sends its Sets to the membership register as
+the service itself, so nobody has to apply the `permissions` output by hand:
+
+```go
+task, err := declare.New(authClient, "http://membership:8080", "membership", declare.Config{},
+    Permissions, AuthorityPermissions) // each a *permissions.Set, under its own key
+app.AddTask(task)
+```
+
+- **The request** is `POST <address>/api/v1/declarations` with
+  `Content-Type: application/json` and the body `permissions.Declaration` renders.
+  The token is asked for the register's audience with the scope
+  `declare:<key>` for each key in the document (space-separated, sorted) and
+  nothing else, so the register can hold the service to the keys its deployment
+  granted it.
+- **`Start` returns at once** and never fails because the register is away; the
+  loop runs in the background. A call that cannot be made, a token that is not
+  given, a `5xx` or a `429` is tried again after `FirstPause`, doubling up to
+  `LongestPause`. A `200` is reported (`OnDeclared`) and the document is sent
+  again after `Repeat`. Any other answer is a refusal: it is reported as an
+  `*declare.Error` carrying the status, the problem `code` and `detail`, and tried
+  again only after `LongestPause`, because a change of the deployment or of the
+  document cures it, not a second's wait.
+- **Defaults** for a zero `Config`: `DefaultFirstPause` 1 s, `DefaultLongestPause`
+  1 min, `DefaultRepeat` 1 h. `OnError` hears every failed attempt.
+- **`Stop`** ends the loop and waits for it; no request is made after it returns.
 
 ### A copy of a tenant's roles, for roles placed on your own objects (`placement`)
 
@@ -574,6 +611,7 @@ asclient/     Confidential authorization-code browser login (PKCE + per-session 
 authclient/   Configuration, Client, Azugo middleware, outbound calls
 chart/        A service's copy of who is below whom in a tenant's chart of authority
 claims/       Shared JWT claim model (user + service + delegated tokens; `act`)
+declare/      A task that declares a service's permissions and levels to the membership register at start
 dpop/         RFC 9449 proof generation & verification, JWK thumbprint
 identitycode/ One spelling of an identity code — store, compare, show
 jwks/         Caching JWKS client (TTL + unknown-kid refresh)
