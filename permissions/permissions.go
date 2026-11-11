@@ -8,7 +8,9 @@
 // other, and nesting a feature under another grants nothing.
 //
 // A service writes its list once and builds a [Set] from it at load. The same Set
-// is what it registers with the membership register ([Set.Section]) and what its
+// is what it registers with the membership register ([Set.Section], or
+// [Declaration] for a document of several Sets, which the package declare sends
+// when the service starts) and what its
 // routes check ([Set.Declared], [Gate]). A route that names an act the list does
 // not declare stops the service before it serves anything, and the test kit in
 // [github.com/gmb-lib/go-authbyte/permissions/permissionstest] fails a build whose
@@ -18,7 +20,6 @@
 package permissions
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -147,6 +148,7 @@ type Set struct {
 	displayName string
 	list        []Permission
 	index       map[string]int
+	levels      []Rung
 }
 
 // New builds a service's Set from its own list and any contributions, checking
@@ -307,20 +309,15 @@ func (s *Set) HeldAny(u Scopes) bool {
 }
 
 // Section renders the Set as the membership register's configuration section:
-// the service under its key, carrying its permissions and nothing else.
+// the service under its key, carrying its permissions and, when the Set has
+// levels ([Set.AddLevels]), its levels. A Set with no levels renders no "roles"
+// member, so what it printed before levels existed is unchanged byte for byte.
 // Applying it is additive and idempotent, and it is how a deployment registers
-// the service's permissions — the service itself makes no call to do so.
+// the service's permissions by hand. A service that would rather tell the
+// register itself, when it starts, uses the package declare, which sends
+// [Declaration] of its Sets; Section makes no call.
 func (s *Set) Section() ([]byte, error) {
-	type service struct {
-		Key         string       `json:"key"`
-		DisplayName string       `json:"displayName"`
-		Permissions []Permission `json:"permissions"`
-	}
-	// encoding/json writes a map's keys in sorted order, so the same list always
-	// renders the same bytes.
-	return json.MarshalIndent(struct {
-		Services []service `json:"services"`
-	}{Services: []service{{Key: s.service, DisplayName: s.displayName, Permissions: s.List()}}}, "", "  ")
+	return Declaration(s)
 }
 
 // Perm is one declared permission as a route checks it. The only way to get one
