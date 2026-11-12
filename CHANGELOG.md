@@ -4,6 +4,19 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.43.0
+
+### Changed
+
+- **`declare` asks for a scope per foreign level group**: besides one `declare:<key>` scope per service key, the
+  token request now carries `declare-group:<group>` for each level whose group is not named like the service key it is
+  declared under (each scope once, all sorted together and joined by a space; `declare.GroupScopePrefix` names the
+  prefix). A level in a group named like its key adds nothing, and a document with no levels asks for exactly what it
+  did before. The document, the request, the pauses and the handling of each answer are unchanged.
+  **Before a service runs on this release, the deployment's client registry must grant its client every
+  `declare-group:<group>` scope its levels need**; until it does, the token request is refused and the service
+  declares nothing (it is reported through `OnError` and tried again, as before).
+
 ## v0.42.0
 
 Additions only; the output of `Set.Section` and of the `permissions` command is unchanged for a Set that declares
