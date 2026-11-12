@@ -3,9 +3,10 @@
 //
 // The document is what [permissions.Declaration] renders for the service's Sets:
 // each service key with its levels and its permissions. [Task] posts it, asking
-// for a token that carries exactly one `declare:<key>` scope per key in the
-// document and nothing else, so the register can hold the service to the keys
-// its deployment granted it.
+// for a token that carries one `declare:<key>` scope per key in the document,
+// and one `declare-group:<group>` scope per level group that is not named like
+// the key it is declared under, and nothing else, so the register can hold the
+// service to the keys and groups its deployment granted it.
 //
 // A service adds the task at start and forgets it. Start returns at once and
 // never fails because the register is away; the task sends in the background,
@@ -37,6 +38,9 @@ const (
 	Path = "/api/v1/declarations"
 	// ScopePrefix starts the scope that grants one service key: `declare:<key>`.
 	ScopePrefix = "declare:"
+	// GroupScopePrefix starts the scope that grants one level group that is not
+	// named like the service key it is declared under: `declare-group:<group>`.
+	GroupScopePrefix = "declare-group:"
 	// TaskName is the name the task answers to a service's task list.
 	TaskName = "service-declaration"
 )
@@ -162,21 +166,45 @@ func New(do Doer, baseURL, audience string, cfg Config, sets ...*permissions.Set
 	if err != nil {
 		return nil, err
 	}
-	keys := permissions.ServiceKeys(sets...)
-	slices.Sort(keys)
-	scopes := make([]string, len(keys))
-	for i, k := range keys {
-		scopes[i] = ScopePrefix + k
-	}
 
 	return &Task{
 		do:       do,
 		url:      strings.TrimRight(baseURL, "/") + Path,
 		audience: audience,
-		scope:    strings.Join(scopes, " "),
+		scope:    scopeFor(sets),
 		body:     body,
 		cfg:      cfg,
 	}, nil
+}
+
+// scopeFor answers the scope string the token is asked with: `declare:<key>` for
+// every service key of the document, and `declare-group:<group>` for every level
+// whose group differs from the key of the service entry it is declared under,
+// each once, sorted together and joined by one space.
+func scopeFor(sets []*permissions.Set) string {
+	seen := map[string]bool{}
+	var scopes []string
+	add := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			scopes = append(scopes, s)
+		}
+	}
+	for _, s := range sets {
+		if s == nil {
+			continue
+		}
+		key := permissions.ServiceKeys(s)[0]
+		add(ScopePrefix + key)
+		for _, r := range s.Levels() {
+			if r.Group != key {
+				add(GroupScopePrefix + r.Group)
+			}
+		}
+	}
+	slices.Sort(scopes)
+
+	return strings.Join(scopes, " ")
 }
 
 // Name implements the framework's task interface.

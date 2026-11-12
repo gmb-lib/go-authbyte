@@ -430,9 +430,14 @@ app.AddTask(task)
 - **The request** is `POST <address>/api/v1/declarations` with
   `Content-Type: application/json` and the body `permissions.Declaration` renders.
   The token is asked for the register's audience with the scope
-  `declare:<key>` for each key in the document (space-separated, sorted) and
-  nothing else, so the register can hold the service to the keys its deployment
-  granted it.
+  `declare:<key>` for each key in the document, and `declare-group:<group>` for
+  each level group that is not named like the service key it is declared under
+  (each once, all sorted together and space-separated), and nothing else, so the
+  register can hold the service to the keys and groups its deployment granted it.
+  A level whose group equals its key adds no scope; a document with no levels asks
+  only for `declare:` scopes. The deployment's client registry must grant the
+  service's client every `declare-group:` scope it asks for, or the token is
+  refused and nothing is declared until the grant is there.
 - **`Start` returns at once** and never fails because the register is away; the
   loop runs in the background. A call that cannot be made, a token that is not
   given, a `5xx` or a `429` is tried again after `FirstPause`, doubling up to

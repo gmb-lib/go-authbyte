@@ -169,6 +169,102 @@ func TestTheRequestAsksExactlyTheDocumentsScopes(t *testing.T) {
 	qt.Assert(t, qt.Equals(string(c.body), string(want)))
 }
 
+// setWith builds a Set under key whose levels are the given groups, one level
+// named "read" in each.
+func setWith(t *testing.T, key string, groups ...string) *permissions.Set {
+	t.Helper()
+	s, err := permissions.New(key, "Service "+key, []permissions.Permission{
+		{Feature: "task", Act: "view", Description: "View", Class: permissions.Ordinary, Plane: permissions.Object},
+	})
+	qt.Assert(t, qt.IsNil(err))
+	var rungs []permissions.Rung
+	for _, g := range groups {
+		rungs = append(rungs, permissions.Rung{Group: g, Level: "read"})
+	}
+	if len(rungs) > 0 {
+		qt.Assert(t, qt.IsNil(s.AddLevels(rungs...)))
+	}
+
+	return s
+}
+
+func scopeAsked(t *testing.T, ss ...*permissions.Set) string {
+	t.Helper()
+	f := newFake(ok)
+	task, err := New(f, "http://register:8080/", "svc:register", Config{Repeat: time.Hour}, ss...)
+	qt.Assert(t, qt.IsNil(err))
+	t.Cleanup(task.Stop)
+	qt.Assert(t, qt.IsNil(task.Start(context.Background())))
+	f.waitCalls(t, 1)
+
+	return f.all()[0].scope
+}
+
+func TestTheTokenAsksForEachForeignLevelGroupAndEachKey(t *testing.T) {
+	got := scopeAsked(t,
+		setWith(t, "orders", "stock", "billing"),
+		setWith(t, "reports", "reports"),
+	)
+	qt.Assert(t, qt.Equals(got,
+		"declare-group:billing declare-group:stock declare:orders declare:reports"))
+}
+
+func TestAGroupNamedLikeAnotherEntrysKeyIsStillAskedFor(t *testing.T) {
+	got := scopeAsked(t,
+		setWith(t, "orders", "billing"),
+		setWith(t, "billing", "billing"),
+	)
+	qt.Assert(t, qt.Equals(got, "declare-group:billing declare:billing declare:orders"))
+}
+
+func TestAGroupSharedByTwoLevelsIsAskedOnce(t *testing.T) {
+	s := setWith(t, "orders", "stock")
+	qt.Assert(t, qt.IsNil(s.AddLevels(permissions.Rung{Group: "stock", Level: "write"})))
+	qt.Assert(t, qt.Equals(scopeAsked(t, s), "declare-group:stock declare:orders"))
+}
+
+func TestADocumentWithNoLevelsAsksOnlyForItsKeys(t *testing.T) {
+	qt.Assert(t, qt.Equals(scopeAsked(t, setWith(t, "orders"), setWith(t, "billing")),
+		"declare:billing declare:orders"))
+}
+
+func TestAGroupNamedLikeItsKeyAddsNoGroupScope(t *testing.T) {
+	qt.Assert(t, qt.Equals(scopeAsked(t, setWith(t, "orders", "orders")), "declare:orders"))
+}
+
+func TestARefusedTokenIsReportedAndTriedAgain(t *testing.T) {
+	f := newFake(func(ctx context.Context, n int) (*authclient.BackgroundResponse, error) {
+		if n == 0 {
+			return nil, errors.New("token refused: scope not granted")
+		}
+
+		return ok(ctx, n)
+	})
+	var mu sync.Mutex
+	var errs []error
+	declared := make(chan struct{}, 1)
+	task, err := New(f, "http://register:8080/", "svc:register", Config{
+		FirstPause: time.Millisecond, LongestPause: 5 * time.Millisecond, Repeat: time.Hour,
+		OnError:    func(err error) { mu.Lock(); errs = append(errs, err); mu.Unlock() },
+		OnDeclared: func([]byte) { declared <- struct{}{} },
+	}, setWith(t, "orders", "stock"))
+	qt.Assert(t, qt.IsNil(err))
+	t.Cleanup(task.Stop)
+	qt.Assert(t, qt.IsNil(task.Start(context.Background())))
+	select {
+	case <-declared:
+	case <-time.After(5 * time.Second):
+		t.Fatal("never declared after the token was refused once")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	qt.Assert(t, qt.Equals(len(errs), 1))
+	qt.Assert(t, qt.StringContains(errs[0].Error(), "token refused"))
+	calls := f.all()
+	qt.Assert(t, qt.Equals(calls[0].scope, "declare-group:stock declare:orders"))
+	qt.Assert(t, qt.Equals(calls[1].scope, "declare-group:stock declare:orders"))
+}
+
 func TestStartReturnsAtOnceWhileTheRegisterDoesNotAnswer(t *testing.T) {
 	release := make(chan struct{})
 	f := newFake(func(ctx context.Context, n int) (*authclient.BackgroundResponse, error) {
