@@ -115,6 +115,19 @@ type Tokens struct {
 	// certificates in it carry personal data — keep it with the session it
 	// belongs to, and never log it.
 	Capabilities *Capabilities `json:"capabilities,omitempty"`
+	// Memberships lists every organisation the person may act under at the
+	// moment of the answer, in the order the Auth Service sent them, with a code
+	// exchange and a refresh alike. It is present only for a person who is in
+	// more than one organisation (empty otherwise), and a token issued for one
+	// organisation still lists the others.
+	Memberships []Membership `json:"memberships,omitempty"`
+}
+
+// Membership is one organisation a person may act under: its id and its name,
+// which may be an empty string.
+type Membership struct {
+	Tenant string `json:"tenant"`
+	Name   string `json:"name"`
 }
 
 // Capabilities is the signing-capability set of a logged-in session: the signing
@@ -164,6 +177,18 @@ type Identity struct {
 // token, uses AuthorizationURL.
 func (c *Client) AuthorizeURL(challenge, state, acrValues string) string {
 	return c.publicURL + "/authorize?" + c.authorizeQuery(challenge, state, acrValues).Encode()
+}
+
+// AuthorizeURLForTenant is AuthorizeURL for a person who chooses the
+// organisation to act under: a non-empty tenant is sent as the tenant parameter.
+// With an empty tenant it returns exactly what AuthorizeURL returns.
+func (c *Client) AuthorizeURLForTenant(challenge, state, acrValues, tenant string) string {
+	q := c.authorizeQuery(challenge, state, acrValues)
+	if tenant != "" {
+		q.Set("tenant", tenant)
+	}
+
+	return c.publicURL + "/authorize?" + q.Encode()
 }
 
 // authorizeQuery is the part of an authorization request every sign-in sends.

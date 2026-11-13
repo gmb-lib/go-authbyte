@@ -62,6 +62,11 @@ type AuthorizationRequest struct {
 	// MaxAge, when set, is the oldest sign-in the caller accepts; zero asks for a
 	// fresh one. Pass the same value to ExchangeSignIn.
 	MaxAge *time.Duration
+	// Tenant, when set, names the organisation a person who is in several
+	// chooses to act under. It is sent as one tenant parameter; the Auth
+	// Service checks it when the token is issued and refuses an organisation
+	// the person is not in (see NotMember). Empty sends nothing.
+	Tenant string
 }
 
 // AuthorizationURL builds the browser-facing authorization redirect for a sign-in
@@ -69,6 +74,9 @@ type AuthorizationRequest struct {
 // ExchangeSignIn, after CheckIssuer.
 func (c *Client) AuthorizationURL(req AuthorizationRequest) string {
 	q := c.authorizeQuery(req.CodeChallenge, req.State, req.ACRValues)
+	if req.Tenant != "" {
+		q.Set("tenant", req.Tenant)
+	}
 	q.Set("scope", scopeOpenID)
 	q.Set("nonce", req.Nonce)
 	if req.Prompt != "" {

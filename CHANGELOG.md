@@ -4,6 +4,26 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.44.0
+
+Additions only, except one property: `Tokens` now holds a slice (`Memberships`), so two `Tokens` values can no
+longer be compared with `==` or used as a map key. Code that compares `Tokens` with `==` must compare the fields it
+needs. Nothing else a caller depends on moves, and there is no new dependency.
+
+### Added
+
+- **A sign-in can name an organisation** (`asclient`): `AuthorizationRequest.Tenant`, and
+  `Client.AuthorizeURLForTenant` for a sign-in that asks for no ID token, send the organisation as one `tenant`
+  parameter, encoded like every other. Empty sends nothing, and the addresses built without it are unchanged.
+- **The token answer's list of organisations**: `Tokens.Memberships` (a `[]Membership` of `Tenant` and `Name`) holds
+  what the authority sent at a code exchange, a sign-in exchange or a refresh, in its order: every organisation the
+  person may act under at that moment. It is empty for a person in one organisation.
+- **The page's organisation checked against the session's**: `asclient.WorkspaceHeader` (`Workspace-Id`),
+  `OtherWorkspaceCode` and `CheckWorkspace(asked, held)`, which answers a `*WorkspaceRefusal` (status `409`, the code and a
+  detail naming neither organisation) for a page opened for another one.
+- **Telling "not a member" apart**: `NotMemberCode` and `NotMember(err)`, true for the authority's `403` refusal of
+  an organisation the person is not in.
+
 ## v0.43.0
 
 ### Changed
