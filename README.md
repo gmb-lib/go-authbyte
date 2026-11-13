@@ -267,6 +267,47 @@ It is nil when the authority sent none, which means "unknown", never "none"; a
 refresh never carries it, so keep it with the session. The certificates carry
 personal data and are never logged.
 
+**A person who is in several organisations** can name the one to act under. Set
+`AuthorizationRequest.Tenant` (or call `AuthorizeURLForTenant` for a sign-in that asks
+for no ID token); it is sent as one `tenant` parameter, however odd its value, and an
+empty one changes nothing. The authority checks it when it issues the token and
+refuses an organisation the person is not in with a `403`; `NotMember` tells that
+refusal from any other. A code exchange and a refresh answer `Tokens.Memberships`, every
+organisation the person may act under at that moment (id and name, in the order sent),
+only for a person in more than one; a token for one organisation still lists the others.
+
+```go
+redirect := as.AuthorizationURL(asclient.AuthorizationRequest{
+    CodeChallenge: challenge, State: state, Nonce: nonce,
+    Tenant: chosenTenant, // empty: the authority's own choice
+})
+
+tokens, id, err := as.ExchangeSignIn(ctx, key, code, verifier, check)
+if asclient.NotMember(err) { /* sign the person in again naming none, once; never loop */ }
+for _, m := range tokens.Memberships { /* m.Tenant, m.Name (may be "") */ }
+```
+
+The authority answers the same refusal to a person with no membership at all and to a
+refresh whose organisation is gone, so it does not show that another organisation exists:
+a back-end may sign the person in again naming none, once, and must not loop.
+
+A back-end that keeps one session per browser acts in the session's organisation. A page
+says which organisation it was opened for in the `asclient.WorkspaceHeader` request
+header (`Workspace-Id`); `CheckWorkspace(asked, held)` serves a request that names none or
+the session's own, and otherwise answers a `409` problem with the code
+`asclient.OtherWorkspaceCode` that names neither organisation, as a
+`*asclient.WorkspaceRefusal` (status, code and detail, for the back-end to answer in its own problem document). The back-end acts in the
+session's organisation whatever the header says; the check only notices a stale page.
+
+```go
+if err := asclient.CheckWorkspace(r.Header.Get(asclient.WorkspaceHeader), session.Tenant); err != nil {
+    var refusal *asclient.WorkspaceRefusal
+    if errors.As(err, &refusal) { /* answer refusal.StatusCode() with refusal.Code and refusal.Detail: the page must reload */ }
+}
+```
+
+Never read the header to choose, widen or narrow what is served.
+
 ### One spelling of an identity code (`identitycode`)
 
 A signatory's identity code arrives written several ways — with the identity type
