@@ -4,6 +4,12 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.45.0
+
+Additions only: `asclient.Changes` and `asclient.CheckWorkspaceWrite`. A back-end that serves several organisations
+per person should call `CheckWorkspaceWrite` instead of `CheckWorkspace` for a request that changes something, so a
+write from a page that names no organisation is refused for a person in more than one. `CheckWorkspace` is unchanged.
+
 ## v0.44.0
 
 Additions only, except one property: `Tokens` now holds a slice (`Memberships`), so two `Tokens` values can no
