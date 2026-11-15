@@ -45,13 +45,45 @@ func (r *WorkspaceRefusal) StatusCode() int { return r.Status }
 // served: a page that says nothing is not refused. An asked equal to held,
 // compared exactly as given, is served. Anything else, an empty held included, is
 // refused with a *WorkspaceRefusal (status 409, code OtherWorkspaceCode) that
-// names neither organisation.
+// names neither organisation. For a request that changes something, use
+// CheckWorkspaceWrite instead: it does not serve a missing header to a person who
+// is in several organisations.
 func CheckWorkspace(asked, held string) error {
 	if asked == "" || asked == held {
 		return nil
 	}
 
 	return &WorkspaceRefusal{Status: http.StatusConflict, Code: OtherWorkspaceCode, Detail: otherWorkspaceDetail}
+}
+
+// Changes reports whether a request with this HTTP method can change something:
+// true for every method except GET, HEAD and OPTIONS, compared exactly as
+// net/http spells them. An empty method, and a lower-case one, count as changing.
+// A back-end calls CheckWorkspaceWrite instead of CheckWorkspace for a request
+// for which Changes is true.
+func Changes(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+
+	return true
+}
+
+// CheckWorkspaceWrite is CheckWorkspace for a request that changes something (see
+// Changes). companies is the number of organisations the session's person is in,
+// as the back-end knows it. A write that names no organisation (an empty asked)
+// from a person in more than one is refused with the same *WorkspaceRefusal
+// CheckWorkspace returns, because it could land in an organisation the person did
+// not mean. Every other case answers exactly what CheckWorkspace(asked, held)
+// answers. A person in one organisation, or none, is never refused for a missing
+// header: there is no other organisation for the write to land in.
+func CheckWorkspaceWrite(asked, held string, companies int) error {
+	if asked == "" && companies > 1 {
+		return &WorkspaceRefusal{Status: http.StatusConflict, Code: OtherWorkspaceCode, Detail: otherWorkspaceDetail}
+	}
+
+	return CheckWorkspace(asked, held)
 }
 
 // NotMember reports whether err is, or wraps, the Auth Service's refusal of an

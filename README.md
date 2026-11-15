@@ -299,6 +299,14 @@ the session's own, and otherwise answers a `409` problem with the code
 `*asclient.WorkspaceRefusal` (status, code and detail, for the back-end to answer in its own problem document). The back-end acts in the
 session's organisation whatever the header says; the check only notices a stale page.
 
+A page built before the header existed sends none, so its writes would be served in
+whatever organisation the session is in now. For a request for which
+`asclient.Changes(method)` is true (every method except `GET`, `HEAD` and `OPTIONS`), call
+`asclient.CheckWorkspaceWrite(asked, held, companies)` instead, where `companies` is the
+number of organisations the person is in: a write that names none is refused, as above,
+when `companies` is more than one. A person in one organisation is never refused for a
+missing header. A named organisation is checked exactly as `CheckWorkspace` checks it.
+
 ```go
 if err := asclient.CheckWorkspace(r.Header.Get(asclient.WorkspaceHeader), session.Tenant); err != nil {
     var refusal *asclient.WorkspaceRefusal
