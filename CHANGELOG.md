@@ -4,6 +4,15 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.46.0
+
+**Brings Azugo v0.50.** No source change in this library: every exported symbol, signature and behaviour is as in v0.45.0.
+
+### Changed
+
+- `github.com/gmb-lib/go-platform-kit` → v1.13.0.
+- Azugo v0.50.2, Azugo Core v0.50.1 and fasthttp v1.79.0, with the remaining dependency graph refreshed. A service that takes this version inherits Azugo v0.50: `ctx.Body.Bytes()`, `ctx.Form.Values()`, `StringOptional()`, `FileOptional()` and `Files()` now return `(value, error)` and stop the build until the error is handled (answer it with `ctx.Error(err)`); the framework holds a request body to a limit (the route's `ctx.SetMaxBodySize`, else `SERVER_MAX_REQUEST_BODY_SIZE`, else 4 MiB) and answers 413 over it, so a route that takes larger uploads must set its own; a form or multipart body is read only when a handler asks for it; a gzip multipart body is held to the limit after unpacking.
+
 ## v0.45.0
 
 Additions only: `asclient.Changes` and `asclient.CheckWorkspaceWrite`. A back-end that serves several organisations
