@@ -8,13 +8,25 @@
 // the key it is declared under, and nothing else, so the register can hold the
 // service to the keys and groups its deployment granted it.
 //
+// The declaration may also carry products (what a product gives, in services,
+// and what it needs) and the caller's own account in a product (the levels it
+// holds); see [Product] and [Account]. A program that only attaches its account
+// declares no service at all. Beside the scopes above the token then carries one
+// `declare-product:<key>` scope per product, one `declare-give:<service>` scope per
+// service a product gives that is not a service of the same document, and one
+// `declare-account:<product>` scope per account. A service that passes no products
+// and no accounts sends the same document and asks for the same scopes as before.
+//
 // A service adds the task at start and forgets it. Start returns at once and
 // never fails because the register is away; the task sends in the background,
 // tries again with a growing pause while the register cannot be reached or
 // answers with an outage, and sends again at an interval once it has been
 // accepted. A refusal (the register understood the document and said no) is
 // reported and tried again only after the longest pause: it is cured by a change
-// of the deployment or of the document, not by waiting a second.
+// of the deployment or of the document, not by waiting a second. An accepted
+// answer that says an entry is waiting (it refers to something the register does
+// not hold yet) is sent again after the longest pause, for as long as any entry
+// waits.
 package declare
 
 import (
@@ -24,10 +36,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gmb-lib/go-authbyte/authclient"
 	"github.com/gmb-lib/go-authbyte/permissions"
@@ -41,6 +56,15 @@ const (
 	// GroupScopePrefix starts the scope that grants one level group that is not
 	// named like the service key it is declared under: `declare-group:<group>`.
 	GroupScopePrefix = "declare-group:"
+	// ProductScopePrefix starts the scope that grants one product key:
+	// `declare-product:<key>`.
+	ProductScopePrefix = "declare-product:"
+	// GiveScopePrefix starts the scope that grants giving one service that is not
+	// declared in the same document: `declare-give:<service>`.
+	GiveScopePrefix = "declare-give:"
+	// AccountScopePrefix starts the scope that grants one account in a product:
+	// `declare-account:<product>`.
+	AccountScopePrefix = "declare-account:"
 	// TaskName is the name the task answers to a service's task list.
 	TaskName = "service-declaration"
 )
@@ -56,6 +80,82 @@ const (
 	// again.
 	DefaultRepeat = time.Hour
 )
+
+// The limits the register holds a document to, checked by [New] so that a
+// document it would refuse is refused before anything is sent.
+const (
+	// MaxProducts is the most products one document carries.
+	MaxProducts = 20
+	// MaxAccounts is the most accounts one document carries.
+	MaxAccounts = 20
+	// MaxGives is the most services one product gives.
+	MaxGives = 50
+	// MaxNeeds is the most products one product needs.
+	MaxNeeds = 20
+	// MaxLevels is the most levels one account holds.
+	MaxLevels = 50
+	// MaxDisplayName is the most characters a display name has.
+	MaxDisplayName = 200
+	// MaxAnswerBytes is how much of an accepted answer is read for entries that
+	// wait; a longer answer is taken as accepted with none waiting.
+	MaxAnswerBytes = 256 * 1024
+)
+
+var wordShape = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+
+// Product is a product the declaration names: a display name, the services it
+// gives (each, optionally, under a feature name) and the products it needs.
+type Product struct {
+	// Key is one lower-case word, such as "suite".
+	Key string
+	// DisplayName is 1 to 200 characters with no control character.
+	DisplayName string
+	// Gives lists what the product gives: 1 to 50 entries, no (Service, Feature)
+	// pair twice.
+	Gives []Give
+	// Needs lists the keys of the products this one needs: at most 20, never its
+	// own key.
+	Needs []string
+}
+
+// Give is one service a product gives, optionally under a feature name.
+type Give struct {
+	// Service is a service key, one lower-case word.
+	Service string
+	// Feature is a short text; left out of the document when empty.
+	Feature string
+}
+
+// Account is the caller's own account in a product, with the levels it holds. It
+// never names a client: the register takes the caller to be the one it is.
+type Account struct {
+	// Product is the key of the product the account is in.
+	Product string
+	// DisplayName is 1 to 200 characters with no control character.
+	DisplayName string
+	// Roles are the levels the account holds: at most 50, none twice.
+	Roles []Level
+}
+
+// Level is one level of a service's role ladder, by service, group and level.
+type Level struct {
+	Service string
+	Group   string
+	Level   string
+}
+
+// Waiting is an entry of an accepted answer that the register could not take yet,
+// because something it refers to is not registered yet. Nothing is wrong; the task
+// asks again.
+type Waiting struct {
+	// Kind is "product" or "account".
+	Kind string
+	// Key is the entry's key: the product key (for an account, the product it is in).
+	Key string
+	// Reason is what is missing: "product", "service" or "level"; empty if the
+	// answer gave none.
+	Reason string
+}
 
 // Doer makes a call as the service itself. [authclient.Client] is one.
 type Doer interface {
@@ -85,6 +185,15 @@ type Config struct {
 	// body of its answer. Optional. It is called on the task's own goroutine, so
 	// a callback that blocks delays the next attempt and makes Stop wait.
 	OnDeclared func(answer []byte)
+	// OnWaiting is told, after OnDeclared, about the entries of an accepted answer
+	// that wait for something not registered yet. Optional; the same rule about
+	// blocking applies.
+	OnWaiting func(waiting []Waiting)
+	// Products are declared beside the Sets, each with the services it gives and
+	// the products it needs. Optional.
+	Products []Product
+	// Accounts are the caller's own accounts in products. Optional.
+	Accounts []Account
 }
 
 // Error is an answer of the register that is not an acceptance. It carries the
@@ -130,7 +239,8 @@ type Task struct {
 }
 
 // New answers the task that declares sets to the register at baseURL (its root,
-// without the API path), reached as the service itself for audience.
+// without the API path), reached as the service itself for audience. With
+// cfg.Products or cfg.Accounts given, no set is needed.
 func New(do Doer, baseURL, audience string, cfg Config, sets ...*permissions.Set) (*Task, error) {
 	if do == nil {
 		return nil, errors.New("declare: a client is required")
@@ -142,7 +252,7 @@ func New(do Doer, baseURL, audience string, cfg Config, sets ...*permissions.Set
 	if audience == "" {
 		return nil, errors.New("declare: the register's audience is required")
 	}
-	if len(sets) == 0 {
+	if len(sets) == 0 && len(cfg.Products) == 0 && len(cfg.Accounts) == 0 {
 		return nil, errors.New("declare: name at least one set to declare")
 	}
 	if cfg.FirstPause < 0 || cfg.LongestPause < 0 || cfg.Repeat < 0 {
@@ -162,7 +272,15 @@ func New(do Doer, baseURL, audience string, cfg Config, sets ...*permissions.Set
 			cfg.LongestPause, cfg.FirstPause)
 	}
 
-	body, err := permissions.Declaration(sets...)
+	if err := validate(cfg.Products, cfg.Accounts); err != nil {
+		return nil, err
+	}
+	// The task keeps its own copies, so a later change to the caller's slices
+	// cannot change what is sent or asked for.
+	cfg.Products = cloneProducts(cfg.Products)
+	cfg.Accounts = cloneAccounts(cfg.Accounts)
+
+	body, err := buildBody(sets, cfg.Products, cfg.Accounts)
 	if err != nil {
 		return nil, err
 	}
@@ -171,17 +289,221 @@ func New(do Doer, baseURL, audience string, cfg Config, sets ...*permissions.Set
 		do:       do,
 		url:      strings.TrimRight(baseURL, "/") + Path,
 		audience: audience,
-		scope:    scopeFor(sets),
+		scope:    scopeFor(sets, cfg.Products, cfg.Accounts),
 		body:     body,
 		cfg:      cfg,
 	}, nil
 }
 
+func cloneProducts(in []Product) []Product {
+	out := slices.Clone(in)
+	for i := range out {
+		out[i].Gives = slices.Clone(out[i].Gives)
+		out[i].Needs = slices.Clone(out[i].Needs)
+	}
+
+	return out
+}
+
+func cloneAccounts(in []Account) []Account {
+	out := slices.Clone(in)
+	for i := range out {
+		out[i].Roles = slices.Clone(out[i].Roles)
+	}
+
+	return out
+}
+
+func checkWord(what, v string) error {
+	if !wordShape.MatchString(v) {
+		return fmt.Errorf("declare: %s %q must be one lower-case word of at most 64 characters", what, v)
+	}
+
+	return nil
+}
+
+func checkNoControl(what, v string) error {
+	if strings.ContainsFunc(v, unicode.IsControl) {
+		return fmt.Errorf("declare: %s may not contain a control character", what)
+	}
+
+	return nil
+}
+
+func checkDisplayName(what, v string) error {
+	if n := utf8.RuneCountInString(v); n < 1 || n > MaxDisplayName {
+		return fmt.Errorf("declare: %s display name must be 1 to %d characters, not %d", what, MaxDisplayName, n)
+	}
+
+	return checkNoControl(what+" display name", v)
+}
+
+// validate holds the products and accounts to the limits the register enforces.
+func validate(products []Product, accounts []Account) error {
+	if len(products) > MaxProducts {
+		return fmt.Errorf("declare: at most %d products, not %d", MaxProducts, len(products))
+	}
+	if len(accounts) > MaxAccounts {
+		return fmt.Errorf("declare: at most %d accounts, not %d", MaxAccounts, len(accounts))
+	}
+
+	seenProduct := map[string]bool{}
+	for i, p := range products {
+		what := fmt.Sprintf("product %d", i+1)
+		if err := checkWord(what+" key", p.Key); err != nil {
+			return err
+		}
+		what = fmt.Sprintf("product %q", p.Key)
+		if seenProduct[p.Key] {
+			return fmt.Errorf("declare: %s is declared twice", what)
+		}
+		seenProduct[p.Key] = true
+		if err := checkDisplayName(what, p.DisplayName); err != nil {
+			return err
+		}
+		if len(p.Gives) < 1 || len(p.Gives) > MaxGives {
+			return fmt.Errorf("declare: %s must give 1 to %d services, not %d", what, MaxGives, len(p.Gives))
+		}
+		seenGive := map[Give]bool{}
+		for _, g := range p.Gives {
+			if err := checkWord(what+" gives a service", g.Service); err != nil {
+				return err
+			}
+			if err := checkNoControl(what+" feature", g.Feature); err != nil {
+				return err
+			}
+			if seenGive[g] {
+				return fmt.Errorf("declare: %s gives service %q with feature %q twice", what, g.Service, g.Feature)
+			}
+			seenGive[g] = true
+		}
+		if len(p.Needs) > MaxNeeds {
+			return fmt.Errorf("declare: %s needs at most %d products, not %d", what, MaxNeeds, len(p.Needs))
+		}
+		for _, n := range p.Needs {
+			if err := checkWord(what+" needs a product", n); err != nil {
+				return err
+			}
+			if n == p.Key {
+				return fmt.Errorf("declare: %s may not need itself", what)
+			}
+		}
+	}
+
+	seenAccount := map[string]bool{}
+	for i, a := range accounts {
+		what := fmt.Sprintf("account %d", i+1)
+		if err := checkWord(what+" product", a.Product); err != nil {
+			return err
+		}
+		what = fmt.Sprintf("account in product %q", a.Product)
+		if seenAccount[a.Product] {
+			return fmt.Errorf("declare: product %q has more than one account", a.Product)
+		}
+		seenAccount[a.Product] = true
+		if err := checkDisplayName(what, a.DisplayName); err != nil {
+			return err
+		}
+		if len(a.Roles) > MaxLevels {
+			return fmt.Errorf("declare: %s holds at most %d levels, not %d", what, MaxLevels, len(a.Roles))
+		}
+		seenLevel := map[Level]bool{}
+		for _, l := range a.Roles {
+			if err := checkWord(what+" level service", l.Service); err != nil {
+				return err
+			}
+			if err := checkWord(what+" level group", l.Group); err != nil {
+				return err
+			}
+			if err := checkWord(what+" level", l.Level); err != nil {
+				return err
+			}
+			if seenLevel[l] {
+				return fmt.Errorf("declare: %s holds level %s/%s:%s twice", what, l.Service, l.Group, l.Level)
+			}
+			seenLevel[l] = true
+		}
+	}
+
+	return nil
+}
+
+// buildBody renders the document. With no products and no accounts it is exactly
+// what [permissions.Declaration] renders; otherwise one object holding the
+// services (when there are sets), the products and the accounts.
+func buildBody(sets []*permissions.Set, products []Product, accounts []Account) ([]byte, error) {
+	var services []byte
+	if len(sets) > 0 {
+		var err error
+		if services, err = permissions.Declaration(sets...); err != nil {
+			return nil, err
+		}
+	}
+	if len(products) == 0 && len(accounts) == 0 {
+		return services, nil
+	}
+
+	type giveDoc struct {
+		Service string `json:"service"`
+		Feature string `json:"feature,omitempty"`
+	}
+	type productDoc struct {
+		Key         string    `json:"key"`
+		DisplayName string    `json:"displayName"`
+		Gives       []giveDoc `json:"gives"`
+		Needs       []string  `json:"needs"`
+	}
+	type levelDoc struct {
+		Service string `json:"service"`
+		Group   string `json:"group"`
+		Level   string `json:"level"`
+	}
+	type accountDoc struct {
+		Product     string     `json:"product"`
+		DisplayName string     `json:"displayName"`
+		Roles       []levelDoc `json:"roles"`
+	}
+	var doc struct {
+		Services json.RawMessage `json:"services,omitempty"`
+		Products []productDoc    `json:"products,omitempty"`
+		Accounts []accountDoc    `json:"accounts,omitempty"`
+	}
+	if services != nil {
+		var d struct {
+			Services json.RawMessage `json:"services"`
+		}
+		if err := json.Unmarshal(services, &d); err != nil {
+			return nil, fmt.Errorf("declare: %w", err)
+		}
+		doc.Services = d.Services
+	}
+	for _, p := range products {
+		pd := productDoc{Key: p.Key, DisplayName: p.DisplayName, Gives: make([]giveDoc, 0, len(p.Gives)),
+			Needs: append([]string{}, p.Needs...)}
+		for _, g := range p.Gives {
+			pd.Gives = append(pd.Gives, giveDoc(g))
+		}
+		doc.Products = append(doc.Products, pd)
+	}
+	for _, a := range accounts {
+		ad := accountDoc{Product: a.Product, DisplayName: a.DisplayName, Roles: make([]levelDoc, 0, len(a.Roles))}
+		for _, l := range a.Roles {
+			ad.Roles = append(ad.Roles, levelDoc(l))
+		}
+		doc.Accounts = append(doc.Accounts, ad)
+	}
+
+	return json.MarshalIndent(doc, "", "  ")
+}
+
 // scopeFor answers the scope string the token is asked with: `declare:<key>` for
 // every service key of the document, and `declare-group:<group>` for every level
-// whose group differs from the key of the service entry it is declared under,
-// each once, sorted together and joined by one space.
-func scopeFor(sets []*permissions.Set) string {
+// whose group differs from the key of the service entry it is declared under;
+// then `declare-product:<key>` for every product, `declare-give:<service>` for
+// every service a product gives that is not a service of the document, and
+// `declare-account:<product>` for every account; each once, sorted together and
+// joined by one space.
+func scopeFor(sets []*permissions.Set, products []Product, accounts []Account) string {
 	seen := map[string]bool{}
 	var scopes []string
 	add := func(s string) {
@@ -190,17 +512,30 @@ func scopeFor(sets []*permissions.Set) string {
 			scopes = append(scopes, s)
 		}
 	}
+	own := map[string]bool{}
 	for _, s := range sets {
 		if s == nil {
 			continue
 		}
 		key := permissions.ServiceKeys(s)[0]
+		own[key] = true
 		add(ScopePrefix + key)
 		for _, r := range s.Levels() {
 			if r.Group != key {
 				add(GroupScopePrefix + r.Group)
 			}
 		}
+	}
+	for _, p := range products {
+		add(ProductScopePrefix + p.Key)
+		for _, g := range p.Gives {
+			if !own[g.Service] {
+				add(GiveScopePrefix + g.Service)
+			}
+		}
+	}
+	for _, a := range accounts {
+		add(AccountScopePrefix + a.Product)
 	}
 	slices.Sort(scopes)
 
@@ -247,7 +582,12 @@ func (t *Task) run(ctx context.Context, done chan struct{}) {
 	pause := t.cfg.FirstPause
 	for ctx.Err() == nil {
 		var wait time.Duration
-		switch err := t.send(ctx); {
+		waiting, err := t.send(ctx)
+		switch {
+		case err == nil && waiting:
+			// Accepted, but an entry refers to something not registered yet: ask
+			// again after the longest pause, not the repeat interval.
+			pause, wait = t.cfg.FirstPause, t.cfg.LongestPause
 		case err == nil:
 			pause, wait = t.cfg.FirstPause, t.cfg.Repeat
 		case ctx.Err() != nil:
@@ -289,18 +629,74 @@ func refused(err error) bool {
 	return errors.As(err, &e) && e.Status < http.StatusInternalServerError && e.Status != http.StatusTooManyRequests
 }
 
-func (t *Task) send(ctx context.Context) error {
+// waitingIn answers the entries of an accepted answer whose status is "waiting".
+// An answer that is too long or cannot be read has none. A line whose key is not
+// one lower-case word still counts as waiting, but is passed on with an empty key,
+// and a reason other than "product", "service" or "level" is passed on empty.
+func waitingIn(body []byte) []Waiting {
+	if len(body) > MaxAnswerBytes {
+		return nil
+	}
+	type line struct {
+		Key    string `json:"key"`
+		Status string `json:"status"`
+		Reason string `json:"reason"`
+	}
+	var answer struct {
+		Products []line `json:"products"`
+		Accounts []line `json:"accounts"`
+	}
+	if json.Unmarshal(body, &answer) != nil {
+		return nil
+	}
+	var out []Waiting
+	for _, l := range answer.Products {
+		if l.Status == "waiting" {
+			out = append(out, waitingLine("product", l.Key, l.Reason))
+		}
+	}
+	for _, l := range answer.Accounts {
+		if l.Status == "waiting" {
+			out = append(out, waitingLine("account", l.Key, l.Reason))
+		}
+	}
+
+	return out
+}
+
+// waitingLine builds a [Waiting] from one line of an answer, keeping the key only
+// when it is one lower-case word and the reason only when it is a known one.
+func waitingLine(kind, key, reason string) Waiting {
+	w := Waiting{Kind: kind}
+	if wordShape.MatchString(key) {
+		w.Key = key
+	}
+	switch reason {
+	case "product", "service", "level":
+		w.Reason = reason
+	}
+
+	return w
+}
+
+// send makes one attempt. It answers true when the register accepted the
+// document but an entry waits for something not registered yet.
+func (t *Task) send(ctx context.Context) (bool, error) {
 	h := http.Header{"Accept": {"application/json"}, "Content-Type": {"application/json"}}
 	res, err := t.do.DoService(ctx, t.audience, t.scope, http.MethodPost, t.url, h, t.body)
 	if err != nil {
-		return fmt.Errorf("declare: %w", err)
+		return false, fmt.Errorf("declare: %w", err)
 	}
 	if res.StatusCode == http.StatusOK {
 		if t.cfg.OnDeclared != nil {
 			t.cfg.OnDeclared(res.Body)
 		}
+		waiting := waitingIn(res.Body)
+		if len(waiting) > 0 && t.cfg.OnWaiting != nil {
+			t.cfg.OnWaiting(waiting)
+		}
 
-		return nil
+		return len(waiting) > 0, nil
 	}
 
 	e := &Error{Status: res.StatusCode}
@@ -312,5 +708,5 @@ func (t *Task) send(ctx context.Context) error {
 		e.Code, e.Detail = problem.Code, problem.Detail
 	}
 
-	return e
+	return false, e
 }
