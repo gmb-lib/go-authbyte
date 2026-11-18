@@ -4,6 +4,21 @@ Notable changes to this library, newest first. Versions are git tags; this file 
 for whoever bumps the dependency — what changed, and what it means for code that already
 uses it.
 
+## v0.47.0
+
+Additions only. A service that passes no products and no accounts sends the same document and asks for the same scopes as in v0.46.0, and every exported symbol it uses is unchanged.
+
+### Added
+
+- **A declaration can carry products and the caller's own account** (`declare`): the types `Product`, `Give`, `Account` and `Level`, and the `Config` fields `Products` and `Accounts`. A product names the services it gives (each with an optional feature) and the products it needs; an account names the product it is in and the levels it holds, and is always the caller's own. `New` refuses what the register refuses (at most 20 products and 20 accounts, 1 to 50 gives, at most 20 needs and 50 levels, no repeated key, pair or level, a product never needing itself, one account per product, display names of 1 to 200 characters with no control character), and it no longer needs a set when a product or an account is given, so a program that only attaches its account declares no service.
+- **Three more scopes** are asked when products or accounts are given: `declare-product:<key>`, `declare-give:<service>` (only for a service the same document does not declare) and `declare-account:<product>`.
+- **An entry that waits is asked again sooner.** When the register accepts the document but an entry refers to something not registered yet (status `waiting`), the task sends again after `LongestPause` instead of `Repeat`, for as long as any entry waits. `OnDeclared` is still called, and the new `Config.OnWaiting` receives the waiting entries (`Waiting`: kind, key, reason). An answer that cannot be read counts as accepted, as before.
+
+### Before you use it
+
+- The receiving register must be a version that knows `products` and `accounts` before a service sends them; an older one refuses the whole document, permissions included.
+- The service's client must be granted the new scopes it now asks for, or the token request fails and nothing is declared.
+
 ## v0.46.0
 
 **Brings Azugo v0.50.** No source change in this library: every exported symbol, signature and behaviour is as in v0.45.0.

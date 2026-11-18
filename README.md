@@ -498,6 +498,52 @@ app.AddTask(task)
 - **Defaults** for a zero `Config`: `DefaultFirstPause` 1 s, `DefaultLongestPause`
   1 min, `DefaultRepeat` 1 h. `OnError` hears every failed attempt.
 - **`Stop`** ends the loop and waits for it; no request is made after it returns.
+- **Products and the caller's own account** can ride in the same document. Give
+  `Config` `Products` (a key, a display name, the services it gives, each with an
+  optional feature, and the products it needs) and `Accounts` (the product the
+  account is in, a display name and the levels it holds). An account never names a
+  client: it is always the caller's. A program that only attaches its account passes
+  no set at all:
+
+  ```go
+  task, err := declare.New(authClient, "http://membership:8080", "membership", declare.Config{
+      Products: []declare.Product{{
+          Key: "suite", DisplayName: "Suite",
+          Gives: []declare.Give{{Service: "alpha", Feature: "tasks"}, {Service: "beta"}},
+          Needs: []string{"base"},
+      }},
+      Accounts: []declare.Account{{
+          Product: "suite", DisplayName: "Suite account",
+          Roles: []declare.Level{{Service: "alpha", Group: "tasks", Level: "read"}},
+      }},
+  }, AlphaPermissions) // the set of service alpha; beta is declared elsewhere
+  ```
+
+  A word (a key, a service, a group, a level) is one lower-case word of letters,
+  digits and `-`, at most 64 characters, starting with a letter. `New` refuses what
+  the register would refuse: more than 20 products or 20 accounts; a product with no
+  gives, more than 50 gives or more than 20 needs, that needs itself, repeats a key or
+  repeats a (service, feature) pair; an account with more than 50 levels or a level
+  twice; a product with two accounts; a display name that is empty, over 200
+  characters or holds a control character. With no products and no accounts the
+  document and the scopes are exactly what they were.
+- **Three more scopes** are asked, sorted with the rest: `declare-product:<key>` for
+  every product, `declare-give:<service>` for every service a product gives that is
+  not a service of the same document (a service the document declares is covered by
+  its `declare:` scope), and `declare-account:<product>` for every account. The
+  deployment's client registry must grant the service's client each of them, or the
+  token is refused. In the example the token carries
+  `declare-account:suite declare-give:beta declare-product:suite declare:alpha`.
+  The register must be a version that knows products and accounts before a service
+  sends them.
+- **An entry can wait.** A `200` answer lists each product and account with a
+  status: `added`, `unchanged`, `changed` or `waiting`. `waiting` means the entry
+  refers to something the register does not hold yet (a `product`, a `service` or a
+  `level`); nothing is wrong. The task sends the document again after
+  `LongestPause`, not `Repeat`, for as long as any entry waits. `OnDeclared` is
+  still told, and `OnWaiting` receives the waiting entries (kind, key, reason). An
+  answer that cannot be read, or is longer than `MaxAnswerBytes` (256 KB), counts as
+  accepted with nothing waiting.
 
 ### A copy of a tenant's roles, for roles placed on your own objects (`placement`)
 
